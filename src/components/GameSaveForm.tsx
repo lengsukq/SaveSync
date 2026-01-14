@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Button, Input, Textarea, Switch, Divider } from "@heroui/react";
 import { FolderOpen, Cloud } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { GameSaveService } from "../services/gameSaveService";
 import { GameSave } from "../types";
+import "../types/electron.d";
 
 interface GameSaveFormProps {
   gameSave?: GameSave | null;
@@ -12,38 +12,46 @@ interface GameSaveFormProps {
 
 export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
   const [name, setName] = useState("");
+  const [alias, setAlias] = useState("");
   const [savePath, setSavePath] = useState("");
   const [description, setDescription] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [webdavUrl, setWebdavUrl] = useState("");
   const [webdavUsername, setWebdavUsername] = useState("");
   const [webdavPassword, setWebdavPassword] = useState("");
+  const [webdavRemotePath, setWebdavRemotePath] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (gameSave) {
       setName(gameSave.name);
+      setAlias(gameSave.alias || "");
       setSavePath(gameSave.savePath);
       setDescription(gameSave.description || "");
       setEnabled(gameSave.enabled);
       setWebdavUrl(gameSave.webdavUrl || "");
       setWebdavUsername(gameSave.webdavUsername || "");
       setWebdavPassword(gameSave.webdavPassword || "");
+      setWebdavRemotePath(gameSave.webdavRemotePath || "");
     }
   }, [gameSave]);
 
   const handleSelectPath = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "选择游戏存档目录",
+      if (!window.electronAPI) {
+        alert("Electron API 不可用");
+        return;
+      }
+      const result = await window.electronAPI.showOpenDialog({
+        properties: ['openFile', 'openDirectory'],
+        title: "选择要备份的文件或目录",
       });
-      if (selected && typeof selected === "string") {
-        setSavePath(selected);
+      if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+        setSavePath(result.filePaths[0]);
       }
     } catch (error) {
       console.error("Failed to select path:", error);
+      alert("选择路径失败，请重试");
     }
   };
 
@@ -58,21 +66,25 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
       if (gameSave) {
         await GameSaveService.updateGameSave(gameSave.id, {
           name,
+          alias: alias.trim() || undefined,
           savePath,
           description,
           enabled,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
           webdavPassword: webdavPassword.trim() || undefined,
+          webdavRemotePath: webdavRemotePath.trim() || undefined,
         });
       } else {
         await GameSaveService.createGameSave({
           name,
+          alias: alias.trim() || undefined,
           savePath,
           description,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
           webdavPassword: webdavPassword.trim() || undefined,
+          webdavRemotePath: webdavRemotePath.trim() || undefined,
         });
       }
       onSuccess();
@@ -87,19 +99,28 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
   return (
     <div className="space-y-4">
       <Input
-        label="游戏名称"
+        label="项目名称"
         placeholder="例如：我的世界"
         value={name}
         onValueChange={setName}
         isRequired
+        description="项目的完整名称"
+      />
+      <Input
+        label="别名（可选）"
+        placeholder="例如：MC、GTA5"
+        value={alias}
+        onValueChange={setAlias}
+        description="简短别名，方便快速识别"
       />
       <div>
         <Input
-          label="存档路径"
-          placeholder="选择游戏存档目录"
+          label="备份地址（文件或目录路径）"
+          placeholder="选择要备份的文件或目录"
           value={savePath}
           onValueChange={setSavePath}
           isRequired
+          description="可以是单个文件或整个目录"
           endContent={
             <Button
               isIconOnly
@@ -149,7 +170,13 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
           placeholder="WebDAV 密码"
           value={webdavPassword}
           onValueChange={setWebdavPassword}
-          description="配置后备份将自动上传到云端"
+        />
+        <Input
+          label="远程路径（文件夹）"
+          placeholder="例如：/backups/game1 或 backups/my-game"
+          value={webdavRemotePath}
+          onValueChange={setWebdavRemotePath}
+          description="指定备份存储的 WebDAV 文件夹路径，如果不存在会自动创建。留空则使用项目ID作为文件夹名"
         />
       </div>
       

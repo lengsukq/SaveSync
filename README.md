@@ -1,6 +1,6 @@
 # SaveSync - 游戏存档同步工具
 
-一个基于 Tauri + React + TypeScript 开发的现代化游戏存档管理工具，支持本地备份和 WebDAV 云端同步。
+一个基于 Electron + React + TypeScript 开发的现代化游戏存档管理工具，支持本地备份和 WebDAV 云端同步。
 
 ## 功能特性
 
@@ -9,21 +9,20 @@
 - 📚 **备份历史** - 查看所有备份记录，支持恢复和删除
 - ⚙️ **灵活配置** - 自定义存档路径、名称、描述等
 - 🎨 **现代化 UI** - 基于 HeroUI 的美观界面
-- 🔒 **安全可靠** - 使用 Tauri 框架，安全高效
+- 🔒 **安全可靠** - 使用 Electron 框架，跨平台支持
 
 ## 技术栈
 
 - **前端**: React 19 + TypeScript + Vite
 - **UI 框架**: HeroUI + Tailwind CSS
 - **状态管理**: Zustand
-- **后端**: Tauri 2.0 (Rust)
+- **桌面框架**: Electron 30
 - **包管理**: Yarn
 
 ## 开发环境要求
 
 - Node.js 18+ 和 Yarn
-- Rust 1.70+ 和 Cargo
-- Windows 10+ (主要平台，支持跨平台)
+- Windows 10+ / macOS / Linux
 
 ## 安装和运行
 
@@ -36,23 +35,35 @@ yarn install
 ### 2. 开发模式运行
 
 ```bash
-yarn tauri:dev
+yarn electron:dev
 ```
 
-这将启动开发服务器，自动打开应用窗口。
+这将启动 Vite 开发服务器和 Electron 应用。
 
 ### 3. 构建生产版本
 
 ```bash
-yarn tauri:build
+yarn build
 ```
 
-构建产物将位于 `src-tauri/target/release/` 目录。
+构建前端和 Electron 主进程代码。
+
+### 4. 构建安装包
+
+```bash
+yarn electron:build
+```
+
+构建 Electron 应用安装包。
 
 ## 项目结构
 
 ```
 SaveSync/
+├── main/                   # Electron 主进程代码
+│   ├── main.ts            # 主进程入口
+│   ├── preload.ts         # 预加载脚本
+│   └── ipcHandlers.ts     # IPC 处理程序
 ├── src/                    # 前端源代码
 │   ├── components/         # React 组件
 │   ├── stores/            # Zustand 状态管理
@@ -60,12 +71,8 @@ SaveSync/
 │   ├── types/             # TypeScript 类型定义
 │   ├── constants/          # 常量定义
 │   └── styles/            # 样式文件
-├── src-tauri/             # Tauri 后端
-│   ├── src/
-│   │   ├── main.rs        # 应用入口
-│   │   ├── commands.rs    # Tauri 命令
-│   │   └── models.rs      # 数据模型
-│   └── Cargo.toml         # Rust 依赖
+├── dist/                   # 前端构建输出
+├── dist-electron/          # Electron 主进程构建输出
 └── package.json           # Node.js 依赖
 ```
 
@@ -103,9 +110,10 @@ SaveSync/
 ### 添加新功能
 
 1. 在 `src/types/` 中定义类型
-2. 在 `src-tauri/src/commands.rs` 中添加 Rust 命令
-3. 在 `src/services/` 中添加服务方法
-4. 在 `src/components/` 中创建 UI 组件
+2. 在 `main/ipcHandlers.ts` 中添加 IPC 处理程序
+3. 在 `main/preload.ts` 中暴露 API
+4. 在 `src/services/` 中添加服务方法
+5. 在 `src/components/` 中创建 UI 组件
 
 ## 许可证
 

@@ -16,8 +16,10 @@ import {
   DropdownTrigger,
   DropdownMenu,
   DropdownItem,
+  Tabs,
+  Tab,
 } from "@heroui/react";
-import { MoreVertical, Download, Trash2, HardDrive } from "lucide-react";
+import { MoreVertical, Download, Trash2, HardDrive, Cloud, Folder } from "lucide-react";
 import { GameSaveService } from "../services/gameSaveService";
 import { Backup, GameSave } from "../types";
 import { format } from "date-fns";
@@ -29,6 +31,7 @@ interface BackupHistoryProps {
 
 export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
   const [backups, setBackups] = useState<Backup[]>([]);
+  const [selectedTab, setSelectedTab] = useState<string>("all");
 
   useEffect(() => {
     loadBackups();
@@ -42,6 +45,15 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
       console.error("Failed to load backups:", error);
     }
   };
+
+  const localBackups = backups.filter((b) => b.type === "local");
+  const cloudBackups = backups.filter((b) => b.type === "cloud");
+  
+  const displayBackups = selectedTab === "local" 
+    ? localBackups 
+    : selectedTab === "cloud" 
+    ? cloudBackups 
+    : backups;
 
   const handleRestore = async (backupId: string) => {
     if (confirm("确定要恢复这个备份吗？当前存档将被覆盖。")) {
@@ -80,11 +92,15 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
     <Modal isOpen={true} onClose={onClose} size="4xl" scrollBehavior="inside">
       <ModalContent>
         <ModalHeader>
-          <div>
-            <h3 className="text-xl font-semibold">{gameSave.name} - 备份历史</h3>
-            <p className="text-sm text-default-500 mt-1">
-              共 {backups.length} 个备份
-            </p>
+          <div className="w-full">
+            <h3 className="text-xl font-semibold">
+              {gameSave.alias ? `${gameSave.alias} (${gameSave.name})` : gameSave.name} - 备份历史
+            </h3>
+            <div className="flex gap-4 mt-2 text-sm text-default-500">
+              <span>本地: {localBackups.length} 个</span>
+              <span>云端: {cloudBackups.length} 个</span>
+              <span>总计: {backups.length} 个</span>
+            </div>
           </div>
         </ModalHeader>
         <ModalBody>
@@ -94,62 +110,110 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
               <p className="text-default-500">还没有备份记录</p>
             </div>
           ) : (
-            <Table aria-label="备份历史">
-              <TableHeader>
-                <TableColumn>名称</TableColumn>
-                <TableColumn>类型</TableColumn>
-                <TableColumn>大小</TableColumn>
-                <TableColumn>创建时间</TableColumn>
-                <TableColumn>操作</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {backups.map((backup) => (
-                  <TableRow key={backup.id}>
-                    <TableCell>{backup.name}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="sm"
-                        variant="flat"
-                        color={backup.type === "local" ? "primary" : "secondary"}
-                      >
-                        {backup.type === "local" ? "本地" : "云端"}
-                      </Chip>
-                    </TableCell>
-                    <TableCell>{formatFileSize(backup.size)}</TableCell>
-                    <TableCell>
-                      {format(backup.createdAt, "yyyy-MM-dd HH:mm:ss")}
-                    </TableCell>
-                    <TableCell>
-                      <Dropdown>
-                        <DropdownTrigger>
-                          <Button isIconOnly variant="light" size="sm">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownTrigger>
-                        <DropdownMenu aria-label="Actions">
-                          <DropdownItem
-                            key="restore"
-                            startContent={<Download className="w-4 h-4" />}
-                            onPress={() => handleRestore(backup.id)}
+            <div className="space-y-4">
+              <Tabs
+                selectedKey={selectedTab}
+                onSelectionChange={(key) => setSelectedTab(key as string)}
+                aria-label="备份类型筛选"
+              >
+                <Tab
+                  key="all"
+                  title={
+                    <div className="flex items-center gap-2">
+                      <HardDrive className="w-4 h-4" />
+                      <span>全部 ({backups.length})</span>
+                    </div>
+                  }
+                />
+                <Tab
+                  key="local"
+                  title={
+                    <div className="flex items-center gap-2">
+                      <Folder className="w-4 h-4" />
+                      <span>本地备份 ({localBackups.length})</span>
+                    </div>
+                  }
+                />
+                <Tab
+                  key="cloud"
+                  title={
+                    <div className="flex items-center gap-2">
+                      <Cloud className="w-4 h-4" />
+                      <span>WebDAV 备份 ({cloudBackups.length})</span>
+                    </div>
+                  }
+                />
+              </Tabs>
+
+              {displayBackups.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-default-500">
+                    {selectedTab === "local" 
+                      ? "还没有本地备份" 
+                      : selectedTab === "cloud" 
+                      ? "还没有 WebDAV 备份" 
+                      : "没有备份记录"}
+                  </p>
+                </div>
+              ) : (
+                <Table aria-label="备份历史">
+                  <TableHeader>
+                    <TableColumn>名称</TableColumn>
+                    <TableColumn>类型</TableColumn>
+                    <TableColumn>大小</TableColumn>
+                    <TableColumn>创建时间</TableColumn>
+                    <TableColumn>操作</TableColumn>
+                  </TableHeader>
+                  <TableBody>
+                    {displayBackups.map((backup) => (
+                      <TableRow key={backup.id}>
+                        <TableCell>{backup.name}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="sm"
+                            variant="flat"
+                            color={backup.type === "local" ? "primary" : "secondary"}
                           >
-                            恢复
-                          </DropdownItem>
-                          <DropdownItem
-                            key="delete"
-                            className="text-danger"
-                            color="danger"
-                            startContent={<Trash2 className="w-4 h-4" />}
-                            onPress={() => handleDelete(backup.id)}
-                          >
-                            删除
-                          </DropdownItem>
-                        </DropdownMenu>
-                      </Dropdown>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                            {backup.type === "local" ? "本地" : "云端"}
+                          </Chip>
+                        </TableCell>
+                        <TableCell>{formatFileSize(backup.size)}</TableCell>
+                        <TableCell>
+                          {format(backup.createdAt, "yyyy-MM-dd HH:mm:ss")}
+                        </TableCell>
+                        <TableCell>
+                          <Dropdown>
+                            <DropdownTrigger>
+                              <Button isIconOnly variant="light" size="sm">
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownTrigger>
+                            <DropdownMenu aria-label="Actions">
+                              <DropdownItem
+                                key="restore"
+                                startContent={<Download className="w-4 h-4" />}
+                                onPress={() => handleRestore(backup.id)}
+                              >
+                                恢复
+                              </DropdownItem>
+                              <DropdownItem
+                                key="delete"
+                                className="text-danger"
+                                color="danger"
+                                startContent={<Trash2 className="w-4 h-4" />}
+                                onPress={() => handleDelete(backup.id)}
+                              >
+                                删除
+                              </DropdownItem>
+                            </DropdownMenu>
+                          </Dropdown>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
           )}
         </ModalBody>
       </ModalContent>

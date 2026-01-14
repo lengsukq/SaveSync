@@ -113,9 +113,16 @@ export function GameSaveManager() {
             <Card key={save.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex justify-between items-start">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {save.name}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {save.alias || save.name}
+                    </h3>
+                    {save.alias && (
+                      <span className="text-xs text-default-400">
+                        ({save.name})
+                      </span>
+                    )}
+                  </div>
                   {save.description && (
                     <p className="text-sm text-default-500 mt-1">
                       {save.description}
@@ -172,9 +179,18 @@ export function GameSaveManager() {
                     >
                       {save.enabled ? "已启用" : "已禁用"}
                     </Chip>
-                    <span className="text-xs text-default-500">
-                      {save.backupCount} 个备份
-                    </span>
+                    <div className="flex gap-2 text-xs text-default-500">
+                      {save.localBackupCount !== undefined && save.localBackupCount > 0 && (
+                        <span>本地: {save.localBackupCount}</span>
+                      )}
+                      {save.cloudBackupCount !== undefined && save.cloudBackupCount > 0 && (
+                        <span>云端: {save.cloudBackupCount}</span>
+                      )}
+                      {(!save.localBackupCount || save.localBackupCount === 0) && 
+                       (!save.cloudBackupCount || save.cloudBackupCount === 0) && (
+                        <span>总计: {save.backupCount}</span>
+                      )}
+                    </div>
                   </div>
                   {save.lastBackup && (
                     <div className="flex items-center gap-2 text-xs text-default-500">

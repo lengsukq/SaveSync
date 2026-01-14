@@ -33,6 +33,8 @@ src-tauri/Cargo.lock
 *.dmg
 *.app
 *.pkg
+release/
+dist-electron/
 
 # Temporary files
 temp-build.bat
