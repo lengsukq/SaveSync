@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "preview": "vite preview",
-    "e-dev": "tsc -p tsconfig.electron.json && concurrently \"yarn dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "e-dev": "tsc -p tsconfig.electron.json && concurrently \"yarn dev\" \"wait-on http://localhost:5174 && electron .\"",
     "e-build": "yarn build && electron-builder",
     "e-build:mac": "yarn build && electron-builder --mac",
     "e-build:win": "yarn build && electron-builder --win",

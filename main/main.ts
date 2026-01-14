@@ -23,7 +23,7 @@ function createWindow(): void {
   // Use app.isPackaged to detect if running from packaged app
   // In development (not packaged), always use Vite dev server
   if (!app.isPackaged) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5174');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
