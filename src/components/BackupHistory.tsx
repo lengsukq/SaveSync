@@ -4,14 +4,6 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  Table,
-  TableHeader,
-  TableColumn,
-  TableBody,
-  TableRow,
-  TableCell,
-  Button,
-  Chip,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
@@ -20,26 +12,26 @@ import {
   Tab,
 } from "@heroui/react";
 import { MoreVertical, Download, Trash2, HardDrive, Cloud, Folder } from "lucide-react";
-import { GameSaveService } from "../services/gameSaveService";
-import { Backup, GameSave } from "../types";
+import { SyncProjectService } from "../services/syncProjectService";
+import { Backup, SyncProject } from "../types";
 import { format } from "date-fns";
 
 interface BackupHistoryProps {
-  gameSave: GameSave;
+  project: SyncProject;
   onClose: () => void;
 }
 
-export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
+export function BackupHistory({ project, onClose }: BackupHistoryProps) {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>("all");
 
   useEffect(() => {
     loadBackups();
-  }, [gameSave.id]);
+  }, [project.id]);
 
   const loadBackups = async () => {
     try {
-      const data = await GameSaveService.listBackups(gameSave.id);
+      const data = await SyncProjectService.listBackups(project.id);
       setBackups(data);
     } catch (error) {
       console.error("Failed to load backups:", error);
@@ -56,11 +48,11 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
     : backups;
 
   const handleRestore = async (backupId: string) => {
-    if (confirm("确定要恢复这个备份吗？当前存档将被覆盖。")) {
+    if (confirm("确定要恢复这个备份吗？当前文件将被覆盖。")) {
       try {
-        await GameSaveService.restoreBackup(backupId);
+        await SyncProjectService.restoreBackup(backupId);
         alert("恢复成功！");
-        onClose();
+        await loadBackups();
       } catch (error) {
         console.error("Failed to restore backup:", error);
         alert("恢复失败，请重试");
@@ -71,7 +63,7 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
   const handleDelete = async (backupId: string) => {
     if (confirm("确定要删除这个备份吗？")) {
       try {
-        await GameSaveService.deleteBackup(backupId);
+        await SyncProjectService.deleteBackup(backupId);
         await loadBackups();
       } catch (error) {
         console.error("Failed to delete backup:", error);
@@ -89,14 +81,24 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} size="4xl" scrollBehavior="inside">
+    <Modal 
+      isOpen={true} 
+      onClose={onClose} 
+      size="4xl" 
+      scrollBehavior="inside"
+      classNames={{
+        base: "bg-white/80 backdrop-blur-xl",
+        header: "border-b border-[#d2d2d7]/50",
+        body: "py-6",
+      }}
+    >
       <ModalContent>
         <ModalHeader>
           <div className="w-full">
-            <h3 className="text-xl font-semibold">
-              {gameSave.alias ? `${gameSave.alias} (${gameSave.name})` : gameSave.name} - 备份历史
+            <h3 className="text-xl font-semibold text-[#1d1d1f]">
+              {project.alias ? `${project.alias} (${project.name})` : project.name} - 备份历史
             </h3>
-            <div className="flex gap-4 mt-2 text-sm text-default-500">
+            <div className="flex gap-4 mt-2 text-sm text-[#86868b] font-medium">
               <span>本地: {localBackups.length} 个</span>
               <span>云端: {cloudBackups.length} 个</span>
               <span>总计: {backups.length} 个</span>
@@ -106,14 +108,14 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
         <ModalBody>
           {backups.length === 0 ? (
             <div className="text-center py-12">
-              <HardDrive className="w-16 h-16 text-default-300 mx-auto mb-4" />
-              <p className="text-default-500">还没有备份记录</p>
+              <HardDrive className="w-16 h-16 text-[#d2d2d7] mx-auto mb-4" />
+              <p className="text-[#86868b] font-medium">还没有备份记录</p>
             </div>
           ) : (
             <div className="space-y-4">
               <Tabs
                 selectedKey={selectedTab}
-                onSelectionChange={(key) => setSelectedTab(key as string)}
+                onSelectionChange={(key: string | number) => setSelectedTab(key as string)}
                 aria-label="备份类型筛选"
               >
                 <Tab
@@ -147,7 +149,7 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
 
               {displayBackups.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-default-500">
+                  <p className="text-[#86868b] font-medium">
                     {selectedTab === "local" 
                       ? "还没有本地备份" 
                       : selectedTab === "cloud" 
@@ -156,62 +158,59 @@ export function BackupHistory({ gameSave, onClose }: BackupHistoryProps) {
                   </p>
                 </div>
               ) : (
-                <Table aria-label="备份历史">
-                  <TableHeader>
-                    <TableColumn>名称</TableColumn>
-                    <TableColumn>类型</TableColumn>
-                    <TableColumn>大小</TableColumn>
-                    <TableColumn>创建时间</TableColumn>
-                    <TableColumn>操作</TableColumn>
-                  </TableHeader>
-                  <TableBody>
-                    {displayBackups.map((backup) => (
-                      <TableRow key={backup.id}>
-                        <TableCell>{backup.name}</TableCell>
-                        <TableCell>
-                          <Chip
-                            size="sm"
-                            variant="flat"
-                            color={backup.type === "local" ? "primary" : "secondary"}
-                          >
-                            {backup.type === "local" ? "本地" : "云端"}
-                          </Chip>
-                        </TableCell>
-                        <TableCell>{formatFileSize(backup.size)}</TableCell>
-                        <TableCell>
-                          {format(backup.createdAt, "yyyy-MM-dd HH:mm:ss")}
-                        </TableCell>
-                        <TableCell>
-                          <Dropdown>
-                            <DropdownTrigger>
-                              <Button isIconOnly variant="light" size="sm">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownTrigger>
-                            <DropdownMenu aria-label="Actions">
-                              <DropdownItem
-                                key="restore"
-                                startContent={<Download className="w-4 h-4" />}
-                                onPress={() => handleRestore(backup.id)}
-                              >
-                                恢复
-                              </DropdownItem>
-                              <DropdownItem
-                                key="delete"
-                                className="text-danger"
-                                color="danger"
-                                startContent={<Trash2 className="w-4 h-4" />}
-                                onPress={() => handleDelete(backup.id)}
-                              >
-                                删除
-                              </DropdownItem>
-                            </DropdownMenu>
-                          </Dropdown>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="space-y-2">
+                  {displayBackups.map((backup) => (
+                    <div
+                      key={backup.id}
+                      className="glass rounded-xl p-4 border border-[#d2d2d7]/30 hover:shadow-md transition-all duration-200"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="font-medium text-[#1d1d1f]">{backup.name}</span>
+                            <span className={`px-2.5 py-0.5 rounded-lg text-xs font-medium ${
+                              backup.type === "local" 
+                                ? 'bg-[#007AFF]/10 text-[#007AFF]' 
+                                : 'bg-[#AF52DE]/10 text-[#AF52DE]'
+                            }`}>
+                              {backup.type === "local" ? "本地" : "云端"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-[#86868b] font-medium">
+                            <span>{formatFileSize(backup.size)}</span>
+                            <span>•</span>
+                            <span>{format(backup.createdAt, "yyyy-MM-dd HH:mm:ss")}</span>
+                          </div>
+                        </div>
+                        <Dropdown>
+                          <DropdownTrigger>
+                            <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#00000008] active:bg-[#00000012] transition-colors">
+                              <MoreVertical className="w-4 h-4 text-[#86868b]" />
+                            </button>
+                          </DropdownTrigger>
+                          <DropdownMenu aria-label="Actions">
+                            <DropdownItem
+                              key="restore"
+                              startContent={<Download className="w-4 h-4" />}
+                              onPress={() => handleRestore(backup.id)}
+                            >
+                              恢复
+                            </DropdownItem>
+                            <DropdownItem
+                              key="delete"
+                              className="text-danger"
+                              color="danger"
+                              startContent={<Trash2 className="w-4 h-4" />}
+                              onPress={() => handleDelete(backup.id)}
+                            >
+                              删除
+                            </DropdownItem>
+                          </DropdownMenu>
+                        </Dropdown>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

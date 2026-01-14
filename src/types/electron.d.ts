@@ -1,15 +1,17 @@
 declare global {
   interface Window {
     electronAPI: {
-      listGameSaves: () => Promise<any[]>;
-      createGameSave: (config: any) => Promise<any>;
-      updateGameSave: (id: string, updates: any) => Promise<any>;
-      deleteGameSave: (id: string) => Promise<void>;
-      createBackup: (gameSaveId: string) => Promise<any>;
-      listBackups: (gameSaveId?: string) => Promise<any[]>;
+      listProjects: () => Promise<any[]>;
+      createProject: (config: any) => Promise<any>;
+      updateProject: (id: string, updates: any) => Promise<any>;
+      deleteProject: (id: string) => Promise<void>;
+      createBackup: (projectId: string) => Promise<any>;
+      listBackups: (projectId?: string) => Promise<any[]>;
       restoreBackup: (backupId: string) => Promise<void>;
       deleteBackup: (backupId: string) => Promise<void>;
       showOpenDialog: (options: any) => Promise<any>;
+      getSettings: () => Promise<any>;
+      updateSettings: (updates: any) => Promise<any>;
     };
   }
 }

@@ -1,8 +1,8 @@
-export interface GameSave {
+export interface SyncProject {
   id: string;
   name: string;
   alias?: string; // 别名，用于快速识别
-  savePath: string;
+  sourcePath: string; // 源文件路径
   description?: string;
   enabled: boolean;
   lastBackup?: Date;
@@ -15,12 +15,12 @@ export interface GameSave {
   webdavUrl?: string;
   webdavUsername?: string;
   webdavPassword?: string;
-  webdavRemotePath?: string; // WebDAV 远程路径（文件夹），例如：/backups/game1
+  webdavRemotePath?: string; // WebDAV 远程路径（文件夹），例如：/backups/project1
 }
 
 export interface Backup {
   id: string;
-  gameSaveId: string;
+  projectId: string; // 从 gameSaveId 改为 projectId
   name: string;
   path: string;
   size: number;
@@ -28,10 +28,10 @@ export interface Backup {
   type: 'local' | 'cloud';
 }
 
-export interface GameSaveConfig {
+export interface SyncProjectConfig {
   id: string;
   name: string;
-  savePath: string;
+  sourcePath: string;
   description?: string;
   enabled: boolean;
   autoBackup: boolean;
@@ -47,4 +47,9 @@ export interface AppSettings {
   defaultMaxBackups: number;
   defaultBackupInterval: number;
   theme: 'light' | 'dark' | 'system';
+  // WebDAV 全局配置（可作为项目默认值）
+  defaultWebdavUrl?: string;
+  defaultWebdavUsername?: string;
+  defaultWebdavPassword?: string;
+  defaultWebdavRemotePath?: string;
 }

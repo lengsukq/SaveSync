@@ -9,11 +9,11 @@ import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
 
-interface GameSave {
+interface SyncProject {
   id: string;
   name: string;
   alias?: string;
-  savePath: string;
+  sourcePath: string;
   description?: string;
   enabled: boolean;
   lastBackup?: Date;
@@ -31,7 +31,7 @@ interface GameSave {
 
 interface Backup {
   id: string;
-  gameSaveId: string;
+  projectId: string;
   name: string;
   path: string;
   size: number;
@@ -39,15 +39,26 @@ interface Backup {
   type: 'local' | 'cloud';
 }
 
-interface GameSaveConfig {
+interface SyncProjectConfig {
   name: string;
   alias?: string;
-  savePath: string;
+  sourcePath: string;
   description?: string;
   webdavUrl?: string;
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string;
+}
+
+interface AppSettings {
+  backupDirectory: string;
+  defaultMaxBackups: number;
+  defaultBackupInterval: number;
+  theme: 'light' | 'dark' | 'system';
+  defaultWebdavUrl?: string;
+  defaultWebdavUsername?: string;
+  defaultWebdavPassword?: string;
+  defaultWebdavRemotePath?: string;
 }
 
 function getDataDir(): string {
@@ -80,27 +91,28 @@ async function ensureDataDir(): Promise<void> {
   await fs.mkdir(getTempDir(), { recursive: true });
 }
 
-async function loadGameSaves(): Promise<GameSave[]> {
-  const dataFile = path.join(getDataDir(), 'game_saves.json');
+async function loadProjects(): Promise<SyncProject[]> {
+  const dataFile = path.join(getDataDir(), 'projects.json');
   try {
     const content = await fs.readFile(dataFile, 'utf-8');
-    const saves = JSON.parse(content);
-    return saves.map((save: any) => ({
-      ...save,
-      createdAt: new Date(save.createdAt),
-      updatedAt: new Date(save.updatedAt),
-      lastBackup: save.lastBackup ? new Date(save.lastBackup) : undefined,
-      lastSync: save.lastSync ? new Date(save.lastSync) : undefined,
+    const projects = JSON.parse(content);
+    return projects.map((project: any) => ({
+      ...project,
+      sourcePath: project.sourcePath || project.savePath, // Migration: support old field name
+      createdAt: new Date(project.createdAt),
+      updatedAt: new Date(project.updatedAt),
+      lastBackup: project.lastBackup ? new Date(project.lastBackup) : undefined,
+      lastSync: project.lastSync ? new Date(project.lastSync) : undefined,
     }));
   } catch {
     return [];
   }
 }
 
-async function saveGameSaves(saves: GameSave[]): Promise<void> {
+async function saveProjects(projects: SyncProject[]): Promise<void> {
   await ensureDataDir();
-  const dataFile = path.join(getDataDir(), 'game_saves.json');
-  await fs.writeFile(dataFile, JSON.stringify(saves, null, 2), 'utf-8');
+  const dataFile = path.join(getDataDir(), 'projects.json');
+  await fs.writeFile(dataFile, JSON.stringify(projects, null, 2), 'utf-8');
 }
 
 async function loadBackups(): Promise<Backup[]> {
@@ -121,6 +133,38 @@ async function saveBackups(backups: Backup[]): Promise<void> {
   await ensureDataDir();
   const backupFile = path.join(getDataDir(), 'backups.json');
   await fs.writeFile(backupFile, JSON.stringify(backups, null, 2), 'utf-8');
+}
+
+async function loadSettings(): Promise<AppSettings> {
+  const settingsFile = path.join(getDataDir(), 'settings.json');
+  try {
+    const content = await fs.readFile(settingsFile, 'utf-8');
+    const settings = JSON.parse(content);
+    return {
+      backupDirectory: settings.backupDirectory || getBackupDir(),
+      defaultMaxBackups: settings.defaultMaxBackups ?? 10,
+      defaultBackupInterval: settings.defaultBackupInterval ?? 60,
+      theme: settings.theme || 'system',
+      defaultWebdavUrl: settings.defaultWebdavUrl,
+      defaultWebdavUsername: settings.defaultWebdavUsername,
+      defaultWebdavPassword: settings.defaultWebdavPassword,
+      defaultWebdavRemotePath: settings.defaultWebdavRemotePath,
+    };
+  } catch {
+    // 返回默认设置
+    return {
+      backupDirectory: getBackupDir(),
+      defaultMaxBackups: 10,
+      defaultBackupInterval: 60,
+      theme: 'system',
+    };
+  }
+}
+
+async function saveSettings(settings: AppSettings): Promise<void> {
+  await ensureDataDir();
+  const settingsFile = path.join(getDataDir(), 'settings.json');
+  await fs.writeFile(settingsFile, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 async function calculateDirSize(dirPath: string): Promise<number> {
@@ -146,7 +190,7 @@ async function zipDirectory(sourcePath: string, zipPath: string): Promise<number
   return new Promise(async (resolve, reject) => {
     try {
       const output = createWriteStream(zipPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const archive = (archiver as any)('zip', { zlib: { level: 9 } });
 
       output.on('close', () => {
         fs.stat(zipPath)
@@ -343,45 +387,45 @@ export function setMainWindow(window: BrowserWindow | null): void {
 }
 
 export function setupIpcHandlers(): void {
-  ipcMain.handle('list-game-saves', async (): Promise<any[]> => {
-    const saves = await loadGameSaves();
+  ipcMain.handle('list-projects', async (): Promise<any[]> => {
+    const projects = await loadProjects();
     const backups = await loadBackups();
     
-    return saves.map((save) => {
-      const saveBackups = backups.filter((b) => b.gameSaveId === save.id);
-      const localBackups = saveBackups.filter((b) => b.type === 'local');
-      const cloudBackups = saveBackups.filter((b) => b.type === 'cloud');
+    return projects.map((project) => {
+      const projectBackups = backups.filter((b) => b.projectId === project.id);
+      const localBackups = projectBackups.filter((b) => b.type === 'local');
+      const cloudBackups = projectBackups.filter((b) => b.type === 'cloud');
       
       return {
-        id: save.id,
-        name: save.name,
-        alias: save.alias,
-        save_path: save.savePath,
-        description: save.description,
-        enabled: save.enabled,
-        backup_count: save.backupCount,
+        id: project.id,
+        name: project.name,
+        alias: project.alias,
+        source_path: project.sourcePath,
+        description: project.description,
+        enabled: project.enabled,
+        backup_count: project.backupCount,
         local_backup_count: localBackups.length,
         cloud_backup_count: cloudBackups.length,
-        created_at: save.createdAt.toISOString(),
-        updated_at: save.updatedAt.toISOString(),
-        last_backup: save.lastBackup?.toISOString(),
-        last_sync: save.lastSync?.toISOString(),
-        webdav_url: save.webdavUrl,
-        webdav_username: save.webdavUsername,
-        webdav_password: save.webdavPassword,
-        webdav_remote_path: save.webdavRemotePath,
+        created_at: project.createdAt.toISOString(),
+        updated_at: project.updatedAt.toISOString(),
+        last_backup: project.lastBackup?.toISOString(),
+        last_sync: project.lastSync?.toISOString(),
+        webdav_url: project.webdavUrl,
+        webdav_username: project.webdavUsername,
+        webdav_password: project.webdavPassword,
+        webdav_remote_path: project.webdavRemotePath,
       };
     });
   });
 
-  ipcMain.handle('create-game-save', async (_event, config: GameSaveConfig): Promise<any> => {
-    const saves = await loadGameSaves();
+  ipcMain.handle('create-project', async (_event, config: SyncProjectConfig): Promise<any> => {
+    const projects = await loadProjects();
     const now = new Date();
-    const gameSave: GameSave = {
+    const project: SyncProject = {
       id: generateId(),
       name: config.name,
       alias: config.alias,
-      savePath: config.savePath,
+      sourcePath: config.sourcePath,
       description: config.description,
       enabled: true,
       lastBackup: undefined,
@@ -397,89 +441,90 @@ export function setupIpcHandlers(): void {
       webdavRemotePath: config.webdavRemotePath,
     };
 
-    saves.push(gameSave);
-    await saveGameSaves(saves);
+    projects.push(project);
+    await saveProjects(projects);
 
     return {
-      id: gameSave.id,
-      name: gameSave.name,
-      alias: gameSave.alias,
-      save_path: gameSave.savePath,
-      description: gameSave.description,
-      enabled: gameSave.enabled,
-      backup_count: gameSave.backupCount,
-      local_backup_count: gameSave.localBackupCount,
-      cloud_backup_count: gameSave.cloudBackupCount,
-      created_at: gameSave.createdAt.toISOString(),
-      updated_at: gameSave.updatedAt.toISOString(),
-      last_backup: gameSave.lastBackup?.toISOString(),
-      last_sync: gameSave.lastSync?.toISOString(),
-      webdav_url: gameSave.webdavUrl,
-      webdav_username: gameSave.webdavUsername,
-      webdav_password: gameSave.webdavPassword,
-      webdav_remote_path: gameSave.webdavRemotePath,
+      id: project.id,
+      name: project.name,
+      alias: project.alias,
+      source_path: project.sourcePath,
+      description: project.description,
+      enabled: project.enabled,
+      backup_count: project.backupCount,
+      local_backup_count: project.localBackupCount,
+      cloud_backup_count: project.cloudBackupCount,
+      created_at: project.createdAt.toISOString(),
+      updated_at: project.updatedAt.toISOString(),
+      last_backup: project.lastBackup?.toISOString(),
+      last_sync: project.lastSync?.toISOString(),
+      webdav_url: project.webdavUrl,
+      webdav_username: project.webdavUsername,
+      webdav_password: project.webdavPassword,
+      webdav_remote_path: project.webdavRemotePath,
     };
   });
 
-  ipcMain.handle('update-game-save', async (_event, id: string, updates: any): Promise<any> => {
-    const saves = await loadGameSaves();
-    const save = saves.find((s) => s.id === id);
-    if (!save) {
-      throw new Error('Game save not found');
+  ipcMain.handle('update-project', async (_event, id: string, updates: any): Promise<any> => {
+    const projects = await loadProjects();
+    const project = projects.find((p) => p.id === id);
+    if (!project) {
+      throw new Error('Project not found');
     }
 
-    if (updates.name !== undefined) save.name = updates.name;
-    if (updates.alias !== undefined) save.alias = updates.alias;
-    if (updates.savePath !== undefined) save.savePath = updates.savePath;
-    if (updates.description !== undefined) save.description = updates.description;
-    if (updates.enabled !== undefined) save.enabled = updates.enabled;
-    if (updates.webdavUrl !== undefined) save.webdavUrl = updates.webdavUrl;
-    if (updates.webdavUsername !== undefined) save.webdavUsername = updates.webdavUsername;
-    if (updates.webdavPassword !== undefined) save.webdavPassword = updates.webdavPassword;
+    if (updates.name !== undefined) project.name = updates.name;
+    if (updates.alias !== undefined) project.alias = updates.alias;
+    if (updates.sourcePath !== undefined) project.sourcePath = updates.sourcePath;
+    if (updates.description !== undefined) project.description = updates.description;
+    if (updates.enabled !== undefined) project.enabled = updates.enabled;
+    if (updates.webdavUrl !== undefined) project.webdavUrl = updates.webdavUrl;
+    if (updates.webdavUsername !== undefined) project.webdavUsername = updates.webdavUsername;
+    if (updates.webdavPassword !== undefined) project.webdavPassword = updates.webdavPassword;
+    if (updates.webdavRemotePath !== undefined) project.webdavRemotePath = updates.webdavRemotePath;
 
-    save.updatedAt = new Date();
-    await saveGameSaves(saves);
+    project.updatedAt = new Date();
+    await saveProjects(projects);
 
     const backups = await loadBackups();
-    const saveBackups = backups.filter((b) => b.gameSaveId === save.id);
-    const localBackups = saveBackups.filter((b) => b.type === 'local');
-    const cloudBackups = saveBackups.filter((b) => b.type === 'cloud');
+    const projectBackups = backups.filter((b) => b.projectId === project.id);
+    const localBackups = projectBackups.filter((b) => b.type === 'local');
+    const cloudBackups = projectBackups.filter((b) => b.type === 'cloud');
 
     return {
-      id: save.id,
-      name: save.name,
-      alias: save.alias,
-      save_path: save.savePath,
-      description: save.description,
-      enabled: save.enabled,
-      backup_count: save.backupCount,
+      id: project.id,
+      name: project.name,
+      alias: project.alias,
+      source_path: project.sourcePath,
+      description: project.description,
+      enabled: project.enabled,
+      backup_count: project.backupCount,
       local_backup_count: localBackups.length,
       cloud_backup_count: cloudBackups.length,
-      created_at: save.createdAt.toISOString(),
-      updated_at: save.updatedAt.toISOString(),
-      last_backup: save.lastBackup?.toISOString(),
-      last_sync: save.lastSync?.toISOString(),
-      webdav_url: save.webdavUrl,
-      webdav_username: save.webdavUsername,
-      webdav_password: save.webdavPassword,
-      webdav_remote_path: save.webdavRemotePath,
+      created_at: project.createdAt.toISOString(),
+      updated_at: project.updatedAt.toISOString(),
+      last_backup: project.lastBackup?.toISOString(),
+      last_sync: project.lastSync?.toISOString(),
+      webdav_url: project.webdavUrl,
+      webdav_username: project.webdavUsername,
+      webdav_password: project.webdavPassword,
+      webdav_remote_path: project.webdavRemotePath,
     };
   });
 
-  ipcMain.handle('delete-game-save', async (_event, id: string): Promise<void> => {
-    const saves = await loadGameSaves();
-    const filtered = saves.filter((s) => s.id !== id);
-    await saveGameSaves(filtered);
+  ipcMain.handle('delete-project', async (_event, id: string): Promise<void> => {
+    const projects = await loadProjects();
+    const filtered = projects.filter((p) => p.id !== id);
+    await saveProjects(filtered);
   });
 
-  ipcMain.handle('create-backup', async (_event, gameSaveId: string): Promise<any> => {
-    const saves = await loadGameSaves();
-    const save = saves.find((s) => s.id === gameSaveId);
-    if (!save) {
-      throw new Error('Game save not found');
+  ipcMain.handle('create-backup', async (_event, projectId: string): Promise<any> => {
+    const projects = await loadProjects();
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      throw new Error('Project not found');
     }
 
-    const sourcePath = save.savePath;
+    const sourcePath = project.sourcePath;
     try {
       await fs.access(sourcePath);
     } catch {
@@ -490,15 +535,15 @@ export function setupIpcHandlers(): void {
 
     const backupId = generateId();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const backupName = `${save.name.replace(/\s/g, '_')}_${timestamp}.zip`;
+    const backupName = `${project.name.replace(/\s/g, '_')}_${timestamp}.zip`;
     const zipPath = path.join(getBackupDir(), backupName);
 
     const size = await zipDirectory(sourcePath, zipPath);
-    const backupType: 'local' | 'cloud' = save.webdavUrl ? 'cloud' : 'local';
+    const backupType: 'local' | 'cloud' = project.webdavUrl ? 'cloud' : 'local';
 
     const backup: Backup = {
       id: backupId,
-      gameSaveId,
+      projectId,
       name: backupName,
       path: zipPath,
       size,
@@ -507,9 +552,9 @@ export function setupIpcHandlers(): void {
     };
 
     // Upload to WebDAV if configured
-    if (backupType === 'cloud' && save.webdavUrl && save.webdavUsername && save.webdavPassword) {
+    if (backupType === 'cloud' && project.webdavUrl && project.webdavUsername && project.webdavPassword) {
       // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
-      let remoteDir = save.webdavRemotePath || save.id;
+      let remoteDir = project.webdavRemotePath || project.id;
       // 确保路径格式正确
       if (!remoteDir.startsWith('/')) {
         remoteDir = `/${remoteDir}`;
@@ -521,9 +566,9 @@ export function setupIpcHandlers(): void {
       // 创建远程目录（如果不存在）
       try {
         await createWebDAVDirectory(
-          save.webdavUrl,
-          save.webdavUsername,
-          save.webdavPassword,
+          project.webdavUrl!,
+          project.webdavUsername!,
+          project.webdavPassword!,
           remoteDir
         );
       } catch (error) {
@@ -535,12 +580,12 @@ export function setupIpcHandlers(): void {
       try {
         await uploadToWebDAV(
           zipPath,
-          save.webdavUrl,
-          save.webdavUsername,
-          save.webdavPassword,
+          project.webdavUrl!,
+          project.webdavUsername!,
+          project.webdavPassword!,
           remotePath
         );
-        save.lastSync = new Date();
+        project.lastSync = new Date();
       } catch (error) {
         throw new Error(`WebDAV upload failed: ${error}`);
       }
@@ -550,13 +595,13 @@ export function setupIpcHandlers(): void {
     backups.push(backup);
     await saveBackups(backups);
 
-    save.lastBackup = new Date();
-    save.backupCount += 1;
-    await saveGameSaves(saves);
+    project.lastBackup = new Date();
+    project.backupCount += 1;
+    await saveProjects(projects);
 
     return {
       id: backup.id,
-      game_save_id: backup.gameSaveId,
+      project_id: backup.projectId,
       name: backup.name,
       path: backup.path,
       size: backup.size,
@@ -565,14 +610,14 @@ export function setupIpcHandlers(): void {
     };
   });
 
-  ipcMain.handle('list-backups', async (_event, gameSaveId?: string): Promise<any[]> => {
+  ipcMain.handle('list-backups', async (_event, projectId?: string): Promise<any[]> => {
     const backups = await loadBackups();
-    const filtered = gameSaveId
-      ? backups.filter((b) => b.gameSaveId === gameSaveId)
+    const filtered = projectId
+      ? backups.filter((b) => b.projectId === projectId)
       : backups;
     return filtered.map((backup) => ({
       id: backup.id,
-      game_save_id: backup.gameSaveId,
+      project_id: backup.projectId,
       name: backup.name,
       path: backup.path,
       size: backup.size,
@@ -588,10 +633,10 @@ export function setupIpcHandlers(): void {
       throw new Error('Backup not found');
     }
 
-    const saves = await loadGameSaves();
-    const save = saves.find((s) => s.id === backup.gameSaveId);
-    if (!save) {
-      throw new Error('Game save not found');
+    const projects = await loadProjects();
+    const project = projects.find((p) => p.id === backup.projectId);
+    if (!project) {
+      throw new Error('Project not found');
     }
 
     await ensureDataDir();
@@ -600,13 +645,13 @@ export function setupIpcHandlers(): void {
 
     // Download from WebDAV if it's a cloud backup
     if (backup.type === 'cloud') {
-      if (!save.webdavUrl || !save.webdavUsername || !save.webdavPassword) {
+      if (!project || !project.webdavUrl || !project.webdavUsername || !project.webdavPassword) {
         throw new Error('WebDAV credentials not configured');
       }
 
       const tempZip = path.join(getTempDir(), backup.name);
       // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
-      let remoteDir = save.webdavRemotePath || save.id;
+      let remoteDir = project.webdavRemotePath || project.id;
       if (!remoteDir.startsWith('/')) {
         remoteDir = `/${remoteDir}`;
       }
@@ -615,9 +660,9 @@ export function setupIpcHandlers(): void {
       }
       const remotePath = `${remoteDir}${backup.name}`;
       await downloadFromWebDAV(
-        save.webdavUrl,
-        save.webdavUsername,
-        save.webdavPassword,
+        project.webdavUrl!,
+        project.webdavUsername!,
+        project.webdavPassword!,
         remotePath,
         tempZip
       );
@@ -634,19 +679,19 @@ export function setupIpcHandlers(): void {
     await unzipFile(zipPath, tempExtractDir);
 
     // Backup current save if it exists
-    const savePath = save.savePath;
-    if (await fs.access(savePath).then(() => true).catch(() => false)) {
+    const sourcePath = project.sourcePath;
+    if (await fs.access(sourcePath).then(() => true).catch(() => false)) {
       const currentBackupPath = path.join(getTempDir(), `current_backup_${generateId()}`);
-      await copyDirectory(savePath, currentBackupPath);
+      await copyDirectory(sourcePath, currentBackupPath);
     }
 
     // Remove existing save directory
     try {
-      const stats = await fs.stat(savePath);
+      const stats = await fs.stat(sourcePath);
       if (stats.isDirectory()) {
-        await fs.rm(savePath, { recursive: true });
+        await fs.rm(sourcePath, { recursive: true });
       } else {
-        await fs.unlink(savePath);
+        await fs.unlink(sourcePath);
       }
     } catch {
       // Ignore if doesn't exist
@@ -658,13 +703,13 @@ export function setupIpcHandlers(): void {
       const entryPath = path.join(tempExtractDir, entries[0]);
       const stats = await fs.stat(entryPath);
       if (stats.isDirectory()) {
-        await copyDirectory(entryPath, savePath);
+        await copyDirectory(entryPath, sourcePath);
       } else {
-        await fs.mkdir(path.dirname(savePath), { recursive: true });
-        await fs.copyFile(entryPath, savePath);
+        await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+        await fs.copyFile(entryPath, sourcePath);
       }
     } else {
-      await copyDirectory(tempExtractDir, savePath);
+      await copyDirectory(tempExtractDir, sourcePath);
     }
 
     // Clean up temporary files
@@ -673,8 +718,8 @@ export function setupIpcHandlers(): void {
       await fs.unlink(zipPath).catch(() => {});
     }
 
-    save.updatedAt = new Date();
-    await saveGameSaves(saves);
+    project.updatedAt = new Date();
+    await saveProjects(projects);
   });
 
   ipcMain.handle('delete-backup', async (_event, backupId: string): Promise<void> => {
@@ -693,11 +738,11 @@ export function setupIpcHandlers(): void {
 
     // Delete from WebDAV if it's a cloud backup
     if (backup.type === 'cloud') {
-      const saves = await loadGameSaves();
-      const save = saves.find((s) => s.id === backup.gameSaveId);
-      if (save?.webdavUrl && save?.webdavUsername && save?.webdavPassword) {
+      const projects = await loadProjects();
+      const project = projects.find((p) => p.id === backup.projectId);
+      if (project?.webdavUrl && project?.webdavUsername && project?.webdavPassword) {
         // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
-        let remoteDir = save.webdavRemotePath || save.id;
+        let remoteDir = project.webdavRemotePath || project.id;
         if (!remoteDir.startsWith('/')) {
           remoteDir = `/${remoteDir}`;
         }
@@ -705,13 +750,13 @@ export function setupIpcHandlers(): void {
           remoteDir = `${remoteDir}/`;
         }
         const remotePath = `${remoteDir}${backup.name}`;
-        const fullUrl = save.webdavUrl.endsWith('/')
-          ? `${save.webdavUrl}${remotePath}`
-          : `${save.webdavUrl}/${remotePath}`;
+        const fullUrl = project.webdavUrl.endsWith('/')
+          ? `${project.webdavUrl}${remotePath}`
+          : `${project.webdavUrl}/${remotePath}`;
         const parsedUrl = new URL(fullUrl);
         const isHttps = parsedUrl.protocol === 'https:';
         const httpModule = isHttps ? https : http;
-        const auth = Buffer.from(`${save.webdavUsername}:${save.webdavPassword}`).toString('base64');
+        const auth = Buffer.from(`${project.webdavUsername}:${project.webdavPassword}`).toString('base64');
 
         const options = {
           hostname: parsedUrl.hostname,
@@ -727,12 +772,12 @@ export function setupIpcHandlers(): void {
       }
     }
 
-    // Update game save backup count
-    const saves = await loadGameSaves();
-    const save = saves.find((s) => s.id === backup.gameSaveId);
-    if (save) {
-      save.backupCount = Math.max(0, save.backupCount - 1);
-      await saveGameSaves(saves);
+    // Update project backup count
+    const projects = await loadProjects();
+    const project = projects.find((p) => p.id === backup.projectId);
+    if (project) {
+      project.backupCount = Math.max(0, project.backupCount - 1);
+      await saveProjects(projects);
     }
 
     const filtered = backups.filter((b) => b.id !== backupId);

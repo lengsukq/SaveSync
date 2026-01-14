@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '127.0.0.1', // 使用 IPv4 地址，避免 IPv6 权限问题
     port: 5173,
     strictPort: false,
   },

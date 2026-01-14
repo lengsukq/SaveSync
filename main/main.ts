@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { setupIpcHandlers, setMainWindow } from './ipcHandlers';
+import { setupIpcHandlers, setMainWindow } from './ipcHandlers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +20,9 @@ function createWindow(): void {
   });
 
   // Load the app
-  if (process.env.NODE_ENV === 'development') {
+  // Use app.isPackaged to detect if running from packaged app
+  // In development (not packaged), always use Vite dev server
+  if (!app.isPackaged) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {

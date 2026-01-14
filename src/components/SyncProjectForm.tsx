@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { Button, Input, Textarea, Switch, Divider } from "@heroui/react";
 import { FolderOpen, Cloud } from "lucide-react";
-import { GameSaveService } from "../services/gameSaveService";
-import { GameSave } from "../types";
+import { SyncProjectService } from "../services/syncProjectService";
+import { SyncProject } from "../types";
 import "../types/electron.d";
 
-interface GameSaveFormProps {
-  gameSave?: GameSave | null;
+interface SyncProjectFormProps {
+  project?: SyncProject | null;
   onSuccess: () => void;
 }
 
-export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
+export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
   const [name, setName] = useState("");
   const [alias, setAlias] = useState("");
-  const [savePath, setSavePath] = useState("");
+  const [sourcePath, setSourcePath] = useState("");
   const [description, setDescription] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [webdavUrl, setWebdavUrl] = useState("");
@@ -23,18 +23,18 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (gameSave) {
-      setName(gameSave.name);
-      setAlias(gameSave.alias || "");
-      setSavePath(gameSave.savePath);
-      setDescription(gameSave.description || "");
-      setEnabled(gameSave.enabled);
-      setWebdavUrl(gameSave.webdavUrl || "");
-      setWebdavUsername(gameSave.webdavUsername || "");
-      setWebdavPassword(gameSave.webdavPassword || "");
-      setWebdavRemotePath(gameSave.webdavRemotePath || "");
+    if (project) {
+      setName(project.name);
+      setAlias(project.alias || "");
+      setSourcePath(project.sourcePath);
+      setDescription(project.description || "");
+      setEnabled(project.enabled);
+      setWebdavUrl(project.webdavUrl || "");
+      setWebdavUsername(project.webdavUsername || "");
+      setWebdavPassword(project.webdavPassword || "");
+      setWebdavRemotePath(project.webdavRemotePath || "");
     }
-  }, [gameSave]);
+  }, [project]);
 
   const handleSelectPath = async () => {
     try {
@@ -44,10 +44,10 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
       }
       const result = await window.electronAPI.showOpenDialog({
         properties: ['openFile', 'openDirectory'],
-        title: "选择要备份的文件或目录",
+        title: "选择要同步的文件或目录",
       });
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-        setSavePath(result.filePaths[0]);
+        setSourcePath(result.filePaths[0]);
       }
     } catch (error) {
       console.error("Failed to select path:", error);
@@ -56,18 +56,18 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
   };
 
   const handleSubmit = async () => {
-    if (!name.trim() || !savePath.trim()) {
-      alert("请填写名称和存档路径");
+    if (!name.trim() || !sourcePath.trim()) {
+      alert("请填写名称和源文件路径");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      if (gameSave) {
-        await GameSaveService.updateGameSave(gameSave.id, {
+      if (project) {
+        await SyncProjectService.updateProject(project.id, {
           name,
           alias: alias.trim() || undefined,
-          savePath,
+          sourcePath,
           description,
           enabled,
           webdavUrl: webdavUrl.trim() || undefined,
@@ -76,10 +76,10 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
           webdavRemotePath: webdavRemotePath.trim() || undefined,
         });
       } else {
-        await GameSaveService.createGameSave({
+        await SyncProjectService.createProject({
           name,
           alias: alias.trim() || undefined,
-          savePath,
+          sourcePath,
           description,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
@@ -89,7 +89,7 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
       }
       onSuccess();
     } catch (error) {
-      console.error("Failed to save game save:", error);
+      console.error("Failed to save project:", error);
       alert("保存失败，请重试");
     } finally {
       setIsSubmitting(false);
@@ -100,7 +100,7 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
     <div className="space-y-4">
       <Input
         label="项目名称"
-        placeholder="例如：我的世界"
+        placeholder="例如：工作文档、个人照片"
         value={name}
         onValueChange={setName}
         isRequired
@@ -108,17 +108,17 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
       />
       <Input
         label="别名（可选）"
-        placeholder="例如：MC、GTA5"
+        placeholder="例如：文档、照片"
         value={alias}
         onValueChange={setAlias}
         description="简短别名，方便快速识别"
       />
       <div>
         <Input
-          label="备份地址（文件或目录路径）"
-          placeholder="选择要备份的文件或目录"
-          value={savePath}
-          onValueChange={setSavePath}
+          label="源文件路径（文件或目录）"
+          placeholder="选择要同步的文件或目录"
+          value={sourcePath}
+          onValueChange={setSourcePath}
           isRequired
           description="可以是单个文件或整个目录"
           endContent={
@@ -173,7 +173,7 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
         />
         <Input
           label="远程路径（文件夹）"
-          placeholder="例如：/backups/game1 或 backups/my-game"
+          placeholder="例如：/backups/project1 或 backups/my-project"
           value={webdavRemotePath}
           onValueChange={setWebdavRemotePath}
           description="指定备份存储的 WebDAV 文件夹路径，如果不存在会自动创建。留空则使用项目ID作为文件夹名"
@@ -192,7 +192,7 @@ export function GameSaveForm({ gameSave, onSuccess }: GameSaveFormProps) {
           disabled={isSubmitting}
           className="px-5 py-2.5 bg-[#007AFF] text-white rounded-xl font-medium text-[15px] hover:bg-[#0051D5] active:bg-[#0040B3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 apple-shadow"
         >
-          {isSubmitting ? "处理中..." : gameSave ? "保存" : "创建"}
+          {isSubmitting ? "处理中..." : project ? "保存" : "创建"}
         </button>
       </div>
     </div>

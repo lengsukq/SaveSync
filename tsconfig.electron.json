@@ -14,8 +14,8 @@
     "noFallthroughCasesInSwitch": true,
     "outDir": "./dist-electron",
     "rootDir": "./main",
-    "typeRoots": ["./node_modules/@types", "./node_modules"]
+    "types": ["node"]
   },
-  "include": ["main/**/*"],
+  "include": ["main/**/*", "main/types.d.ts"],
   "exclude": ["node_modules", "dist", "dist-electron"]
 }
