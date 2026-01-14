@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Chip,
   Modal,
   ModalContent,
   ModalHeader,
@@ -216,9 +211,10 @@ export function SyncProjectManager() {
 
       <Modal 
         isOpen={isOpen} 
-        onClose={onClose} 
+        onClose={onClose}
         size="2xl" 
         scrollBehavior="inside"
+        placement="center"
         classNames={{
           base: "bg-white/80 backdrop-blur-xl",
           header: "border-b border-[#d2d2d7]/50",
@@ -226,18 +222,22 @@ export function SyncProjectManager() {
         }}
       >
         <ModalContent>
-          <ModalHeader className="text-xl font-semibold text-[#1d1d1f]">
-            {editingProject ? "编辑同步项目" : "添加同步项目"}
-          </ModalHeader>
-          <ModalBody>
-            <SyncProjectForm
-              project={editingProject}
-              onSuccess={() => {
-                onClose();
-                loadProjects();
-              }}
-            />
-          </ModalBody>
+          {(onModalClose) => (
+            <>
+              <ModalHeader className="text-xl font-semibold text-[#1d1d1f]">
+                {editingProject ? "编辑同步项目" : "添加同步项目"}
+              </ModalHeader>
+              <ModalBody>
+                <SyncProjectForm
+                  project={editingProject}
+                  onSuccess={() => {
+                    onModalClose();
+                    loadProjects();
+                  }}
+                />
+              </ModalBody>
+            </>
+          )}
         </ModalContent>
       </Modal>
 
