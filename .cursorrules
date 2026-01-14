@@ -1,0 +1,214 @@
+# SaveSync Project Rules
+
+## Technology Stack
+
+### Core Framework
+- **Tauri**: v2.x - Desktop application framework
+- **TypeScript**: Primary development language
+- **Package Manager**: Yarn (use `yarn` commands, not npm)
+- **Frontend Framework**: React 18+ with TypeScript
+- **Build Tool**: Vite (for frontend bundling)
+- **Rust**: Backend runtime (Tauri core)
+
+### Key Dependencies
+- **WebDAV Client**: For game save synchronization
+- **File System APIs**: Tauri's fs API for local file operations
+- **State Management**: Zustand or Jotai (lightweight, modern)
+- **UI Framework**: Tailwind CSS (utility-first styling)
+- **File Watching**: Tauri's file system events or chokidar
+
+## Project Structure
+
+```
+SaveSync/
+├── src/                    # Frontend source (React + TypeScript)
+│   ├── components/         # React components
+│   ├── hooks/             # Custom React hooks
+│   ├── stores/            # State management (Zustand/Jotai)
+│   ├── services/          # Business logic services
+│   ├── types/             # TypeScript type definitions
+│   ├── utils/             # Utility functions
+│   ├── constants/         # Constants and configuration
+│   └── main.tsx           # React entry point
+├── src-tauri/             # Tauri backend (Rust)
+│   ├── src/
+│   │   ├── main.rs        # Tauri entry point
+│   │   ├── commands/      # Tauri commands (Rust functions)
+│   │   └── lib.rs         # Library code
+│   └── Cargo.toml         # Rust dependencies
+├── public/                # Static assets
+├── .cursorrules           # This file
+├── package.json           # Node.js dependencies
+├── tsconfig.json          # TypeScript configuration
+├── vite.config.ts         # Vite configuration
+└── tauri.conf.json        # Tauri configuration
+```
+
+## Code Standards
+
+### TypeScript Guidelines
+- **Strict Mode**: Always use TypeScript strict mode
+- **Type Safety**: Avoid `any`, use proper types or `unknown`
+- **Interfaces over Types**: Prefer interfaces for object shapes
+- **Explicit Returns**: Always specify return types for functions
+- **No Implicit Any**: All parameters must be typed
+
+### React Component Standards
+- **Functional Components Only**: Use function components with hooks
+- **Component Atomization**: Break down into small, focused components
+- **Custom Hooks**: Extract complex logic into reusable hooks
+- **Props Interface**: Always define props interface/type
+- **File Size Limit**: Components should not exceed 150 lines
+
+### File Organization
+- **Single Responsibility**: One file, one core logic
+- **Top-Down Layout**: 
+  - Top: Main exported functions/components
+  - Bottom: Helper functions and utilities
+- **Separate Concerns**: 
+  - Types → `types/` directory
+  - Constants → `constants/` directory
+  - Business logic → `services/` directory
+  - UI components → `components/` directory
+
+### Naming Conventions
+- **Files**: PascalCase for components (`GameSaveList.tsx`), camelCase for utilities (`fileUtils.ts`)
+- **Components**: PascalCase (`GameSaveCard`)
+- **Functions/Variables**: camelCase (`syncGameSave`)
+- **Constants**: UPPER_SNAKE_CASE (`MAX_RETRY_COUNT`)
+- **Types/Interfaces**: PascalCase (`GameSaveConfig`)
+
+## Tauri-Specific Guidelines
+
+### Command Invocation
+- Use `invoke()` from `@tauri-apps/api/core` to call Rust commands
+- All file system operations should go through Tauri commands
+- Never use Node.js fs APIs directly in frontend
+
+### Security
+- Follow Tauri's security best practices
+- Use `allowlist` in `tauri.conf.json` to restrict API access
+- Validate all inputs in Rust commands
+- Never expose sensitive operations to frontend
+
+### Performance
+- Keep Rust commands focused and fast
+- Use async operations for file I/O
+- Batch operations when possible
+- Cache frequently accessed data
+
+## Development Workflow
+
+### Package Management
+- **Always use Yarn**: `yarn add`, `yarn install`, `yarn dev`
+- **Lock File**: Commit `yarn.lock` to version control
+- **Dependencies**: Use exact versions for critical packages
+
+### Code Quality
+- **Self-Documenting Code**: Code should explain itself
+- **Meaningful Names**: Variables and functions reveal their purpose
+- **DRY Principle**: Don't repeat yourself, extract common logic
+- **Clean Structure**: Related code stays together
+
+### Error Handling
+- Use TypeScript's type system to prevent errors
+- Handle async errors with try-catch
+- Provide user-friendly error messages
+- Log errors appropriately for debugging
+
+## Game Save Synchronization
+
+### Core Features
+- **File Monitoring**: Watch game save directories for changes
+- **WebDAV Sync**: Upload/download saves to/from WebDAV server
+- **Conflict Resolution**: Handle sync conflicts intelligently
+- **Backup Management**: Keep local backups before syncing
+
+### Implementation Notes
+- Use Tauri's file system events for monitoring
+- Implement retry logic for network operations
+- Show sync progress to users
+- Handle offline scenarios gracefully
+
+## AI IDE Instructions
+
+### When Writing Code
+1. **Check Existing Structure**: Before creating files, check if similar modules exist
+2. **Follow Patterns**: Match existing code patterns and conventions
+3. **Split Large Files**: If a file exceeds 150 lines, suggest splitting
+4. **Type Everything**: Never use `any`, always provide proper types
+5. **Extract Constants**: Move magic numbers/strings to constants files
+
+### When Refactoring
+1. **Maintain Functionality**: Ensure refactoring doesn't break existing features
+2. **Improve Structure**: Make code more modular and maintainable
+3. **Update Types**: Keep type definitions in sync with code changes
+4. **Test Changes**: Verify changes work as expected
+
+### When Adding Features
+1. **Plan Structure**: Outline file structure before implementation
+2. **Reuse Components**: Check for existing components before creating new ones
+3. **Follow Architecture**: Place code in appropriate directories
+4. **Document Complex Logic**: Add comments for non-obvious implementations
+
+## Common Patterns
+
+### Tauri Command Pattern
+```typescript
+// Frontend: src/services/syncService.ts
+import { invoke } from '@tauri-apps/api/core';
+
+export async function syncGameSave(path: string) {
+  return await invoke<string>('sync_game_save', { path });
+}
+```
+
+```rust
+// Backend: src-tauri/src/commands/sync.rs
+#[tauri::command]
+pub async fn sync_game_save(path: String) -> Result<String, String> {
+    // Implementation
+}
+```
+
+### Component Pattern
+```typescript
+// src/components/GameSaveCard.tsx
+interface GameSaveCardProps {
+  name: string;
+  lastSynced: Date;
+  onSync: () => void;
+}
+
+export function GameSaveCard({ name, lastSynced, onSync }: GameSaveCardProps) {
+  // Component implementation
+}
+```
+
+### Service Pattern
+```typescript
+// src/services/gameSaveService.ts
+export class GameSaveService {
+  static async listSaves(): Promise<GameSave[]> {
+    // Implementation
+  }
+}
+```
+
+## Testing Strategy
+- Write unit tests for utility functions
+- Test Tauri commands in isolation
+- Use React Testing Library for components
+- Mock WebDAV client for integration tests
+
+## Build & Deployment
+- Use `yarn tauri build` for production builds
+- Configure app metadata in `tauri.conf.json`
+- Set up code signing for Windows distribution
+- Optimize bundle size for faster startup
+
+## Notes
+- This is a game save synchronization tool
+- Primary platform: Windows (with cross-platform support)
+- Focus on reliability and user experience
+- Keep the app lightweight and fast
