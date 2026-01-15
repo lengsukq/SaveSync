@@ -4,6 +4,7 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: './', // 使用相对路径，确保打包后的资源能正确加载
   plugins: [react()],
   server: {
     host: '127.0.0.1', // 使用 IPv4 地址，避免 IPv6 权限问题
