@@ -26,6 +26,7 @@ export function SyncProjectManager() {
   } = useSyncProjectStore();
   const [isOpen, setIsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<SyncProject | null>(null);
+  const [backingUpProjectId, setBackingUpProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     loadProjects();
@@ -74,11 +75,23 @@ export function SyncProjectManager() {
   };
 
   const handleBackup = async (project: SyncProject) => {
+    if (backingUpProjectId === project.id) {
+      return; // 防止重复点击
+    }
+    
+    setBackingUpProjectId(project.id);
     try {
-      await SyncProjectService.createBackup(project.id);
+      console.log("Creating backup for project:", project.id);
+      const backup = await SyncProjectService.createBackup(project.id);
+      console.log("Backup created successfully:", backup);
+      alert(`备份创建成功！\n备份名称: ${backup.name}`);
       await loadProjects();
     } catch (error) {
       console.error("Failed to create backup:", error);
+      const errorMessage = error instanceof Error ? error.message : "创建备份失败，请重试";
+      alert(`备份创建失败：${errorMessage}`);
+    } finally {
+      setBackingUpProjectId(null);
     }
   };
 
@@ -152,8 +165,9 @@ export function SyncProjectManager() {
                     <DropdownItem
                       key="backup"
                       onPress={() => handleBackup(project)}
+                      isDisabled={backingUpProjectId === project.id}
                     >
-                      创建备份
+                      {backingUpProjectId === project.id ? '备份中...' : '创建备份'}
                     </DropdownItem>
                     <DropdownItem
                       key="history"
@@ -209,9 +223,14 @@ export function SyncProjectManager() {
                   )}
                   <button
                     onClick={() => handleBackup(project)}
-                    className="w-full px-4 py-2.5 bg-[#007AFF] text-white rounded-xl font-medium text-[14px] hover:bg-[#0051D5] active:bg-[#0040B3] transition-colors duration-200 apple-shadow"
+                    disabled={backingUpProjectId === project.id}
+                    className={`w-full px-4 py-2.5 rounded-xl font-medium text-[14px] transition-colors duration-200 apple-shadow ${
+                      backingUpProjectId === project.id
+                        ? 'bg-[#86868b] text-white cursor-not-allowed'
+                        : 'bg-[#007AFF] text-white hover:bg-[#0051D5] active:bg-[#0040B3]'
+                    }`}
                   >
-                    立即备份
+                    {backingUpProjectId === project.id ? '备份中...' : '立即备份'}
                   </button>
                 </div>
               </div>
