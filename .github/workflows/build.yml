@@ -13,17 +13,9 @@ on:
           - both
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: ${{ github.event.inputs.platform == 'windows' && [ 'windows-latest' ] || github.event.inputs.platform == 'macos' && [ 'macos-latest' ] || [ 'windows-latest', 'macos-latest' ] }}
-        include:
-          - os: windows-latest
-            platform: win
-          - os: macos-latest
-            platform: mac
-
+  build-windows:
+    if: github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'both'
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,27 +33,42 @@ jobs:
         run: yarn build
 
       - name: Build Electron app (Windows)
-        if: matrix.platform == 'win'
-        run: yarn electron:build:win
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Build Electron app (macOS)
-        if: matrix.platform == 'mac'
-        run: yarn electron:build:mac
+        run: yarn e-build:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts (Windows)
-        if: matrix.platform == 'win'
         uses: actions/upload-artifact@v4
         with:
           name: SaveSync-Windows-${{ github.sha }}
           path: release/*.exe
           retention-days: 30
 
+  build-macos:
+    if: github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'both'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build application
+        run: yarn build
+
+      - name: Build Electron app (macOS)
+        run: yarn e-build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
       - name: Upload artifacts (macOS)
-        if: matrix.platform == 'mac'
         uses: actions/upload-artifact@v4
         with:
           name: SaveSync-macOS-${{ github.sha }}
