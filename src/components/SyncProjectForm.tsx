@@ -233,14 +233,16 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
               label: "text-[#1d1d1f] font-medium text-sm",
             }}
           >
-            <SelectItem key="none" value="">
-              不使用 WebDAV
-            </SelectItem>
-            {webdavSources.map((source) => (
-              <SelectItem key={source.id} value={source.id}>
-                {source.name} ({source.url})
-              </SelectItem>
-            ))}
+            {[
+              <SelectItem key="none">
+                不使用 WebDAV
+              </SelectItem>,
+              ...webdavSources.map((source) => (
+                <SelectItem key={source.id}>
+                  {source.name} ({source.url})
+                </SelectItem>
+              ))
+            ]}
           </Select>
         )}
         <Input

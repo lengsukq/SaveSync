@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,18 +16,29 @@ export default defineConfig({
       include: [/node_modules/],
     },
     rollupOptions: {
-      external: (id) => {
-        // 不 externalize 项目内的模块
-        if (id.startsWith('.') || id.startsWith('/')) return false;
-        // externalize @heroui/spacer 如果找不到
-        if (id === '@heroui/spacer') return false;
-        return false;
+      output: {
+        manualChunks: undefined,
+      },
+      onwarn(warning, warn) {
+        // 忽略 @react-aria/live-announcer 的解析警告
+        if (warning.code === 'UNRESOLVED_IMPORT' && warning.id?.includes('@react-aria/live-announcer')) {
+          return;
+        }
+        warn(warning);
       },
     },
   },
   resolve: {
     alias: {
       '@heroui/spacer': '@heroui/react',
+      '@react-aria/live-announcer': path.resolve(__dirname, 'node_modules/@react-aria/live-announcer'),
+    },
+    dedupe: ['@react-aria/live-announcer'],
+  },
+  optimizeDeps: {
+    include: ['@react-aria/live-announcer'],
+    esbuildOptions: {
+      conditions: ['import', 'module', 'browser', 'default'],
     },
   },
 });
