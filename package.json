@@ -12,8 +12,7 @@
     "e-build": "yarn build && electron-builder",
     "e-build:mac": "yarn build && electron-builder --mac",
     "e-build:win": "yarn build && electron-builder --win",
-    "electron": "electron .",
-    "generate-icons": "node scripts/generate-icons.js"
+    "electron": "electron ."
   },
   "build": {
     "appId": "com.savesync.app",
@@ -31,7 +30,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.icns"
@@ -40,7 +42,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"

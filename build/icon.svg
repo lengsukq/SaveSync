@@ -1,25 +1,93 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- 渐变背景 -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#007AFF;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0051D5;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0051D5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#003D9E;stop-opacity:1" />
     </linearGradient>
+    
+    <!-- 云朵高光渐变 -->
+    <linearGradient id="cloudHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- 云朵阴影 -->
+    <filter id="cloudShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dx="0" dy="4" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- 箭头光晕效果 -->
+    <filter id="arrowGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   
-  <!-- 背景 -->
-  <rect width="512" height="512" rx="120" fill="url(#grad1)"/>
+  <!-- 背景圆角矩形 -->
+  <rect width="512" height="512" rx="120" fill="url(#bgGradient)"/>
   
-  <!-- 云朵图标 -->
+  <!-- 背景装饰圆圈 -->
+  <circle cx="128" cy="128" r="60" fill="white" opacity="0.08"/>
+  <circle cx="384" cy="384" r="80" fill="white" opacity="0.06"/>
+  
+  <!-- 主云朵图标 -->
   <g transform="translate(256, 256)">
-    <!-- 主云朵 -->
-    <path d="M-120,-40 C-120,-80 -90,-110 -50,-110 C-40,-110 -30,-107 -22,-102 C-30,-120 50,-120 50,-100 C50,-100 60,-90 80,-90 C100,-90 110,-100 110,-100 C110,-120 130,-120 118,-102 C128,-107 138,-110 148,-110 C188,-110 218,-80 218,-40 C218,-20 208,-10 188,-10 L-100,-10 C-120,-10 -120,-20 -120,-40 Z" fill="white" opacity="0.95"/>
+    <!-- 云朵主体 -->
+    <g filter="url(#cloudShadow)">
+      <!-- 主云朵 -->
+      <path d="M-140,-30 C-140,-75 -105,-110 -60,-110 C-50,-110 -40,-107 -32,-102 C-40,-120 40,-120 40,-100 C40,-100 50,-90 70,-90 C90,-90 100,-100 100,-100 C100,-120 120,-120 108,-102 C118,-107 128,-110 138,-110 C183,-110 218,-75 218,-30 C218,-10 208,0 188,0 L-100,0 C-120,0 -140,-10 -140,-30 Z" 
+            fill="white" 
+            opacity="0.98"/>
+      
+      <!-- 云朵高光 -->
+      <path d="M-140,-30 C-140,-75 -105,-110 -60,-110 C-50,-110 -40,-107 -32,-102 C-40,-120 40,-120 40,-100 C40,-100 50,-90 70,-90 C90,-90 100,-100 100,-100 C100,-120 120,-120 108,-102 C118,-107 128,-110 138,-110 C183,-110 218,-75 218,-30 C218,-10 208,0 188,0 L-100,0 C-120,0 -140,-10 -140,-30 Z" 
+            fill="url(#cloudHighlight)" 
+            opacity="0.4"/>
+    </g>
     
-    <!-- 同步箭头 -->
-    <g transform="translate(0, 20)">
+    <!-- 同步箭头组 -->
+    <g transform="translate(0, 25)" filter="url(#arrowGlow)">
       <!-- 左箭头 -->
-      <path d="M-80,0 L-60,-20 L-60,-10 L-40,-10 L-40,10 L-60,10 L-60,20 Z" fill="white" opacity="0.9"/>
+      <g transform="translate(-85, 0)">
+        <path d="M-15,0 L-5,-10 L-5,-5 L5,-5 L5,5 L-5,5 L-5,10 Z" 
+              fill="white" 
+              opacity="0.95"/>
+        <!-- 箭头内部高光 -->
+        <path d="M-12,-3 L-8,-7 L-8,-4 L-2,-4 L-2,4 L-8,4 L-8,7 Z" 
+              fill="white" 
+              opacity="0.5"/>
+      </g>
+      
+      <!-- 连接线 -->
+      <line x1="-60" y1="0" x2="60" y2="0" 
+            stroke="white" 
+            stroke-width="3" 
+            stroke-linecap="round" 
+            opacity="0.6"/>
+      
       <!-- 右箭头 -->
-      <path d="M80,0 L60,20 L60,10 L40,10 L40,-10 L60,-10 L60,-20 Z" fill="white" opacity="0.9"/>
+      <g transform="translate(85, 0)">
+        <path d="M15,0 L5,10 L5,5 L-5,5 L-5,-5 L5,-5 L5,-10 Z" 
+              fill="white" 
+              opacity="0.95"/>
+        <!-- 箭头内部高光 -->
+        <path d="M12,3 L8,7 L8,4 L2,4 L2,-4 L8,-4 L8,-7 Z" 
+              fill="white" 
+              opacity="0.5"/>
+      </g>
     </g>
   </g>
 </svg>
