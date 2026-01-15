@@ -12,7 +12,8 @@ export interface SyncProject {
   cloudBackupCount?: number; // WebDAV 备份数量
   createdAt: Date;
   updatedAt: Date;
-  webdavUrl?: string;
+  webdavSourceId?: string; // 引用的 WebDAV 源 ID
+  webdavUrl?: string; // 保留用于向后兼容，如果设置了 webdavSourceId 则优先使用源配置
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string; // WebDAV 远程路径（文件夹），例如：/backups/project1
@@ -42,14 +43,19 @@ export interface SyncProjectConfig {
   webdavPassword?: string;
 }
 
+export interface WebDAVSource {
+  id: string;
+  name: string; // WebDAV 源名称，用于识别
+  url: string;
+  username: string;
+  password: string;
+  defaultRemotePath?: string; // 默认远程路径
+}
+
 export interface AppSettings {
   backupDirectory: string;
   defaultMaxBackups: number;
   defaultBackupInterval: number;
   theme: 'light' | 'dark' | 'system';
-  // WebDAV 全局配置（可作为项目默认值）
-  defaultWebdavUrl?: string;
-  defaultWebdavUsername?: string;
-  defaultWebdavPassword?: string;
-  defaultWebdavRemotePath?: string;
+  webdavSources: WebDAVSource[]; // WebDAV 源列表
 }

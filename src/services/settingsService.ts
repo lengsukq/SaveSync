@@ -9,14 +9,11 @@ export class SettingsService {
       }
       const data = await window.electronAPI.getSettings();
       return {
-        backupDirectory: data.backup_directory,
-        defaultMaxBackups: data.default_max_backups,
-        defaultBackupInterval: data.default_backup_interval,
-        theme: data.theme,
-        defaultWebdavUrl: data.default_webdav_url,
-        defaultWebdavUsername: data.default_webdav_username,
-        defaultWebdavPassword: data.default_webdav_password,
-        defaultWebdavRemotePath: data.default_webdav_remote_path,
+        backupDirectory: data.backup_directory || "",
+        defaultMaxBackups: data.default_max_backups ?? 10,
+        defaultBackupInterval: data.default_backup_interval ?? 60,
+        theme: data.theme || 'system',
+        webdavSources: data.webdav_sources || [],
       };
     } catch (error) {
       console.error("Failed to load settings:", error);
@@ -26,6 +23,7 @@ export class SettingsService {
         defaultMaxBackups: 10,
         defaultBackupInterval: 60,
         theme: 'system',
+        webdavSources: [],
       };
     }
   }
@@ -39,20 +37,14 @@ export class SettingsService {
       default_max_backups: updates.defaultMaxBackups,
       default_backup_interval: updates.defaultBackupInterval,
       theme: updates.theme,
-      default_webdav_url: updates.defaultWebdavUrl,
-      default_webdav_username: updates.defaultWebdavUsername,
-      default_webdav_password: updates.defaultWebdavPassword,
-      default_webdav_remote_path: updates.defaultWebdavRemotePath,
+      webdav_sources: updates.webdavSources,
     });
     return {
-      backupDirectory: data.backup_directory,
-      defaultMaxBackups: data.default_max_backups,
-      defaultBackupInterval: data.default_backup_interval,
-      theme: data.theme,
-      defaultWebdavUrl: data.default_webdav_url,
-      defaultWebdavUsername: data.default_webdav_username,
-      defaultWebdavPassword: data.default_webdav_password,
-      defaultWebdavRemotePath: data.default_webdav_remote_path,
+      backupDirectory: data.backup_directory || "",
+      defaultMaxBackups: data.default_max_backups ?? 10,
+      defaultBackupInterval: data.default_backup_interval ?? 60,
+      theme: data.theme || 'system',
+      webdavSources: data.webdav_sources || [],
     };
   }
 }

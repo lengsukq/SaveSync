@@ -22,6 +22,7 @@ export class SyncProjectService {
         updatedAt: new Date(project.updated_at),
         lastBackup: project.last_backup ? new Date(project.last_backup) : undefined,
         lastSync: project.last_sync ? new Date(project.last_sync) : undefined,
+        webdavSourceId: project.webdav_source_id,
         webdavUrl: project.webdav_url,
         webdavUsername: project.webdav_username,
         webdavPassword: project.webdav_password,
@@ -38,6 +39,7 @@ export class SyncProjectService {
     alias?: string;
     sourcePath: string;
     description?: string;
+    webdavSourceId?: string;
     webdavUrl?: string;
     webdavUsername?: string;
     webdavPassword?: string;
@@ -61,6 +63,7 @@ export class SyncProjectService {
       updatedAt: new Date(project.updated_at),
       lastBackup: project.last_backup ? new Date(project.last_backup) : undefined,
       lastSync: project.last_sync ? new Date(project.last_sync) : undefined,
+      webdavSourceId: project.webdav_source_id,
       webdavUrl: project.webdav_url,
       webdavUsername: project.webdav_username,
       webdavPassword: project.webdav_password,
@@ -90,6 +93,7 @@ export class SyncProjectService {
       updatedAt: new Date(project.updated_at),
       lastBackup: project.last_backup ? new Date(project.last_backup) : undefined,
       lastSync: project.last_sync ? new Date(project.last_sync) : undefined,
+      webdavSourceId: project.webdav_source_id,
       webdavUrl: project.webdav_url,
       webdavUsername: project.webdav_username,
       webdavPassword: project.webdav_password,

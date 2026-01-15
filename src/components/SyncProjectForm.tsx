@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Button, Input, Textarea, Switch, Divider } from "@heroui/react";
+import { Button, Input, Textarea, Switch, Divider, Select, SelectItem } from "@heroui/react";
 import { FolderOpen, Cloud } from "lucide-react";
 import { SyncProjectService } from "../services/syncProjectService";
-import { SyncProject } from "../types";
+import { SettingsService } from "../services/settingsService";
+import { SyncProject, WebDAVSource } from "../types";
 import "../types/electron.d";
 
 interface SyncProjectFormProps {
@@ -16,11 +17,26 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
   const [sourcePath, setSourcePath] = useState("");
   const [description, setDescription] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [webdavSourceId, setWebdavSourceId] = useState<string>("");
   const [webdavUrl, setWebdavUrl] = useState("");
   const [webdavUsername, setWebdavUsername] = useState("");
   const [webdavPassword, setWebdavPassword] = useState("");
   const [webdavRemotePath, setWebdavRemotePath] = useState("");
+  const [webdavSources, setWebdavSources] = useState<WebDAVSource[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    // 加载 WebDAV 源列表
+    const loadWebdavSources = async () => {
+      try {
+        const settings = await SettingsService.getSettings();
+        setWebdavSources(settings.webdavSources || []);
+      } catch (error) {
+        console.error("Failed to load WebDAV sources:", error);
+      }
+    };
+    loadWebdavSources();
+  }, []);
 
   useEffect(() => {
     if (project) {
@@ -29,29 +45,70 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
       setSourcePath(project.sourcePath);
       setDescription(project.description || "");
       setEnabled(project.enabled);
+      setWebdavSourceId(project.webdavSourceId || "");
       setWebdavUrl(project.webdavUrl || "");
       setWebdavUsername(project.webdavUsername || "");
       setWebdavPassword(project.webdavPassword || "");
       setWebdavRemotePath(project.webdavRemotePath || "");
+    } else {
+      // 重置表单
+      setName("");
+      setAlias("");
+      setSourcePath("");
+      setDescription("");
+      setEnabled(true);
+      setWebdavSourceId("");
+      setWebdavUrl("");
+      setWebdavUsername("");
+      setWebdavPassword("");
+      setWebdavRemotePath("");
     }
   }, [project]);
 
+  // 当选择 WebDAV 源时，自动填充信息
+  useEffect(() => {
+    if (webdavSourceId && webdavSources.length > 0) {
+      const source = webdavSources.find(s => s.id === webdavSourceId);
+      if (source) {
+        setWebdavUrl(source.url);
+        setWebdavUsername(source.username);
+        setWebdavPassword(source.password);
+        // 如果源有默认远程路径且当前没有设置，则使用源的默认路径
+        if (source.defaultRemotePath && !webdavRemotePath) {
+          setWebdavRemotePath(source.defaultRemotePath);
+        }
+      }
+    } else if (!webdavSourceId && !project) {
+      // 如果取消选择源且不是编辑模式，清空字段
+      setWebdavUrl("");
+      setWebdavUsername("");
+      setWebdavPassword("");
+    }
+  }, [webdavSourceId, webdavSources]);
+
   const handleSelectPath = async () => {
     try {
-      if (!window.electronAPI) {
-        alert("Electron API 不可用");
+      // 检查 electronAPI 是否可用
+      if (typeof window === 'undefined' || !window.electronAPI) {
+        console.error("Electron API not available:", {
+          window: typeof window,
+          electronAPI: window?.electronAPI,
+        });
+        alert("Electron API 不可用，请确保在 Electron 环境中运行");
         return;
       }
+      
       const result = await window.electronAPI.showOpenDialog({
         properties: ['openFile', 'openDirectory'],
         title: "选择要同步的文件或目录",
       });
+      
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
         setSourcePath(result.filePaths[0]);
       }
     } catch (error) {
       console.error("Failed to select path:", error);
-      alert("选择路径失败，请重试");
+      alert(`选择路径失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   };
 
@@ -70,6 +127,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           sourcePath,
           description,
           enabled,
+          webdavSourceId: webdavSourceId || undefined,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
           webdavPassword: webdavPassword.trim() || undefined,
@@ -81,6 +139,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           alias: alias.trim() || undefined,
           sourcePath,
           description,
+          webdavSourceId: webdavSourceId || undefined,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
           webdavPassword: webdavPassword.trim() || undefined,
@@ -151,18 +210,68 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           <Cloud className="w-4 h-4" />
           <span>WebDAV 云端同步（可选）</span>
         </div>
+        {webdavSources.length > 0 && (
+          <Select
+            label="选择 WebDAV 源"
+            placeholder="选择已配置的 WebDAV 源或手动输入"
+            selectedKeys={webdavSourceId ? [webdavSourceId] : []}
+            onSelectionChange={(keys) => {
+              const selectedId = Array.from(keys)[0] as string;
+              setWebdavSourceId(selectedId || "");
+              if (!selectedId) {
+                // 清空手动输入
+                setWebdavUrl("");
+                setWebdavUsername("");
+                setWebdavPassword("");
+                setWebdavRemotePath("");
+              }
+            }}
+            variant="bordered"
+            classNames={{
+              base: "w-full",
+              trigger: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+              label: "text-[#1d1d1f] font-medium text-sm",
+            }}
+          >
+            <SelectItem key="none" value="">
+              不使用 WebDAV
+            </SelectItem>
+            {webdavSources.map((source) => (
+              <SelectItem key={source.id} value={source.id}>
+                {source.name} ({source.url})
+              </SelectItem>
+            ))}
+          </Select>
+        )}
         <Input
           label="WebDAV URL"
           placeholder="https://example.com/webdav"
           value={webdavUrl}
           onValueChange={setWebdavUrl}
-          description="WebDAV 服务器地址"
+          description="WebDAV 服务器地址（如果选择了源，将自动填充）"
+          variant="bordered"
+          isDisabled={!!webdavSourceId}
+          classNames={{
+            base: "w-full",
+            input: "text-[#1d1d1f]",
+            inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+            label: "text-[#1d1d1f] font-medium text-sm",
+            description: "text-[#86868b] text-xs",
+          }}
         />
         <Input
           label="用户名"
           placeholder="WebDAV 用户名"
           value={webdavUsername}
           onValueChange={setWebdavUsername}
+          variant="bordered"
+          isDisabled={!!webdavSourceId}
+          classNames={{
+            base: "w-full",
+            input: "text-[#1d1d1f]",
+            inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+            label: "text-[#1d1d1f] font-medium text-sm",
+          }}
         />
         <Input
           label="密码"
@@ -170,6 +279,14 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           placeholder="WebDAV 密码"
           value={webdavPassword}
           onValueChange={setWebdavPassword}
+          variant="bordered"
+          isDisabled={!!webdavSourceId}
+          classNames={{
+            base: "w-full",
+            input: "text-[#1d1d1f]",
+            inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+            label: "text-[#1d1d1f] font-medium text-sm",
+          }}
         />
         <Input
           label="远程路径（文件夹）"
@@ -177,6 +294,14 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           value={webdavRemotePath}
           onValueChange={setWebdavRemotePath}
           description="指定备份存储的 WebDAV 文件夹路径，如果不存在会自动创建。留空则使用项目ID作为文件夹名"
+          variant="bordered"
+          classNames={{
+            base: "w-full",
+            input: "text-[#1d1d1f]",
+            inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+            label: "text-[#1d1d1f] font-medium text-sm",
+            description: "text-[#86868b] text-xs",
+          }}
         />
       </div>
       

@@ -1,0 +1,158 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+        include:
+          - os: macos-latest
+            platform: mac
+            artifact_name: SaveSync-mac
+          - os: windows-latest
+            platform: win
+            artifact_name: SaveSync-win
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Check for icon files
+        run: |
+          if [ ! -f "build/icon.icns" ] && [ "${{ matrix.platform }}" == "mac" ]; then
+            echo "警告: build/icon.icns 不存在，构建可能会失败"
+          fi
+          if [ ! -f "build/icon.ico" ] && [ "${{ matrix.platform }}" == "win" ]; then
+            echo "警告: build/icon.ico 不存在，构建可能会失败"
+          fi
+
+      - name: Update version in package.json
+        run: |
+          node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); pkg.version = '${{ github.event.inputs.version }}'; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
+
+      - name: Build application
+        run: yarn build
+
+      - name: Build Electron app (macOS)
+        if: matrix.platform == 'mac'
+        run: yarn e-build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false  # 跳过代码签名（如果需要签名，需要配置证书）
+
+      - name: Build Electron app (Windows)
+        if: matrix.platform == 'win'
+        run: yarn e-build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false  # 跳过代码签名（如果需要签名，需要配置证书）
+
+      - name: List release files
+        if: matrix.platform == 'mac'
+        run: |
+          echo "macOS build files:"
+          ls -la release/ || echo "No release directory found"
+
+      - name: List release files
+        if: matrix.platform == 'win'
+        run: |
+          echo "Windows build files:"
+          dir release\ || echo "No release directory found"
+
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/*
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: SaveSync-mac
+          path: ./release-mac
+          pattern: '**/*'
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: SaveSync-win
+          path: ./release-win
+          pattern: '**/*'
+
+      - name: List downloaded files
+        run: |
+          echo "macOS files:"
+          find ./release-mac -type f || echo "No macOS files found"
+          echo "Windows files:"
+          find ./release-win -type f || echo "No Windows files found"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          body: |
+            ## Release v${{ github.event.inputs.version }}
+            
+            ${{ github.event.inputs.release_notes || 'No release notes provided.' }}
+            
+            ### Downloads
+            
+            - **macOS**: Download the `.dmg` file for macOS (Intel and Apple Silicon)
+            - **Windows**: Download the `.exe` installer for Windows
+            
+            ### Build Information
+            - Build Date: ${{ github.run_started_at }}
+            - Commit: ${{ github.sha }}
+            - Workflow Run: ${{ github.run_id }}
+          files: |
+            ./release-mac/*
+            ./release-win/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

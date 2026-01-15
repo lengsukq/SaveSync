@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Input, Button, Divider } from "@heroui/react";
-import { Cloud, FolderOpen, Save, CheckCircle2, HardDrive } from "lucide-react";
+import { Input, Button, Divider, Modal, ModalContent, ModalHeader, ModalBody } from "@heroui/react";
+import { Cloud, FolderOpen, Save, CheckCircle2, HardDrive, Plus, Trash2, Edit2 } from "lucide-react";
 import { SettingsService } from "../services/settingsService";
-import { AppSettings } from "../types";
+import { AppSettings, WebDAVSource } from "../types";
 import "../types/electron.d";
 
 export function Settings() {
@@ -11,10 +11,22 @@ export function Settings() {
     defaultMaxBackups: 10,
     defaultBackupInterval: 60,
     theme: 'system',
+    webdavSources: [],
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  // WebDAV 源编辑状态
+  const [editingSource, setEditingSource] = useState<WebDAVSource | null>(null);
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [sourceForm, setSourceForm] = useState<Omit<WebDAVSource, 'id'>>({
+    name: "",
+    url: "",
+    username: "",
+    password: "",
+    defaultRemotePath: "",
+  });
 
   useEffect(() => {
     loadSettings();
@@ -34,20 +46,22 @@ export function Settings() {
 
   const handleSelectBackupDirectory = async () => {
     try {
-      if (!window.electronAPI) {
-        alert("Electron API 不可用");
+      if (typeof window === 'undefined' || !window.electronAPI) {
+        alert("Electron API 不可用，请确保在 Electron 环境中运行");
         return;
       }
+      
       const result = await window.electronAPI.showOpenDialog({
         properties: ['openDirectory'],
         title: "选择备份目录",
       });
+      
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
         setSettings({ ...settings, backupDirectory: result.filePaths[0] });
       }
     } catch (error) {
       console.error("Failed to select directory:", error);
-      alert("选择目录失败，请重试");
+      alert(`选择目录失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   };
 
@@ -64,6 +78,72 @@ export function Settings() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // WebDAV 源管理
+  const handleAddSource = () => {
+    setEditingSource(null);
+    setSourceForm({
+      name: "",
+      url: "",
+      username: "",
+      password: "",
+      defaultRemotePath: "",
+    });
+    setIsSourceModalOpen(true);
+  };
+
+  const handleEditSource = (source: WebDAVSource) => {
+    setEditingSource(source);
+    setSourceForm({
+      name: source.name,
+      url: source.url,
+      username: source.username,
+      password: source.password,
+      defaultRemotePath: source.defaultRemotePath || "",
+    });
+    setIsSourceModalOpen(true);
+  };
+
+  const handleDeleteSource = (id: string) => {
+    if (confirm("确定要删除这个 WebDAV 源吗？")) {
+      setSettings({
+        ...settings,
+        webdavSources: settings.webdavSources.filter(s => s.id !== id),
+      });
+    }
+  };
+
+  const handleSaveSource = () => {
+    if (!sourceForm.name.trim() || !sourceForm.url.trim() || !sourceForm.username.trim()) {
+      alert("请填写名称、URL 和用户名");
+      return;
+    }
+
+    if (editingSource) {
+      // 更新现有源
+      setSettings({
+        ...settings,
+        webdavSources: settings.webdavSources.map(s =>
+          s.id === editingSource.id
+            ? { ...editingSource, ...sourceForm }
+            : s
+        ),
+      });
+    } else {
+      // 添加新源
+      const newSource: WebDAVSource = {
+        id: `webdav-${Date.now()}`,
+        ...sourceForm,
+        defaultRemotePath: sourceForm.defaultRemotePath || undefined,
+      };
+      setSettings({
+        ...settings,
+        webdavSources: [...settings.webdavSources, newSource],
+      });
+    }
+    setIsSourceModalOpen(false);
+    setEditingSource(null);
   };
 
   if (isLoading) {
@@ -164,84 +244,199 @@ export function Settings() {
 
       {/* WebDAV 设置区域 */}
       <div className="glass rounded-2xl p-6 apple-shadow border border-[#d2d2d7]/30">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#34C759] to-[#28A745] flex items-center justify-center">
-            <Cloud className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#34C759] to-[#28A745] flex items-center justify-center">
+              <Cloud className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold text-[#1d1d1f]">WebDAV 云端配置</h3>
+              <p className="text-sm text-[#86868b] font-medium mt-0.5">
+                管理多个 WebDAV 服务器，在创建项目时可以选择
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-semibold text-[#1d1d1f]">WebDAV 云端配置</h3>
-            <p className="text-sm text-[#86868b] font-medium mt-0.5">
-              配置默认的 WebDAV 服务器，这些设置将作为新项目的默认值
-            </p>
-          </div>
+          <Button
+            onPress={handleAddSource}
+            startContent={<Plus className="w-4 h-4" />}
+            className="px-4 py-2 bg-[#007AFF] text-white rounded-xl font-medium text-sm hover:bg-[#0051D5] active:bg-[#0040B3] transition-colors duration-200 apple-shadow"
+          >
+            添加源
+          </Button>
         </div>
 
         <Divider className="mb-6" />
 
-        <div className="space-y-5">
-          <Input
-            label="WebDAV URL"
-            placeholder="https://example.com/webdav"
-            value={settings.defaultWebdavUrl || ""}
-            onValueChange={(value) => setSettings({ ...settings, defaultWebdavUrl: value || undefined })}
-            description="WebDAV 服务器地址"
-            variant="bordered"
-            classNames={{
-              base: "w-full",
-              input: "text-[#1d1d1f]",
-              inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
-              label: "text-[#1d1d1f] font-medium text-sm",
-              description: "text-[#86868b] text-xs",
-            }}
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Input
-              label="用户名"
-              placeholder="WebDAV 用户名"
-              value={settings.defaultWebdavUsername || ""}
-              onValueChange={(value) => setSettings({ ...settings, defaultWebdavUsername: value || undefined })}
-              variant="bordered"
-              classNames={{
-                base: "w-full",
-                input: "text-[#1d1d1f]",
-                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
-                label: "text-[#1d1d1f] font-medium text-sm",
-              }}
-            />
-            <Input
-              label="密码"
-              type="password"
-              placeholder="WebDAV 密码"
-              value={settings.defaultWebdavPassword || ""}
-              onValueChange={(value) => setSettings({ ...settings, defaultWebdavPassword: value || undefined })}
-              variant="bordered"
-              classNames={{
-                base: "w-full",
-                input: "text-[#1d1d1f]",
-                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
-                label: "text-[#1d1d1f] font-medium text-sm",
-              }}
-            />
+        {settings.webdavSources.length === 0 ? (
+          <div className="text-center py-12">
+            <Cloud className="w-16 h-16 text-[#d2d2d7] mx-auto mb-4" />
+            <p className="text-[#86868b] text-sm font-medium mb-4">还没有添加任何 WebDAV 源</p>
+            <Button
+              onPress={handleAddSource}
+              startContent={<Plus className="w-4 h-4" />}
+              className="px-4 py-2 bg-[#007AFF] text-white rounded-xl font-medium text-sm hover:bg-[#0051D5] active:bg-[#0040B3] transition-colors duration-200 apple-shadow"
+            >
+              添加第一个 WebDAV 源
+            </Button>
           </div>
-
-          <Input
-            label="默认远程路径（文件夹）"
-            placeholder="例如：/backups 或 backups/"
-            value={settings.defaultWebdavRemotePath || ""}
-            onValueChange={(value) => setSettings({ ...settings, defaultWebdavRemotePath: value || undefined })}
-            description="新项目在 WebDAV 上备份的默认文件夹路径，可在项目设置中覆盖"
-            variant="bordered"
-            classNames={{
-              base: "w-full",
-              input: "text-[#1d1d1f]",
-              inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
-              label: "text-[#1d1d1f] font-medium text-sm",
-              description: "text-[#86868b] text-xs",
-            }}
-          />
-        </div>
+        ) : (
+          <div className="space-y-3">
+            {settings.webdavSources.map((source) => (
+              <div
+                key={source.id}
+                className="flex items-center justify-between p-4 rounded-xl border border-[#d2d2d7]/30 bg-white/50 hover:bg-white/80 transition-colors"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h4 className="text-base font-semibold text-[#1d1d1f]">{source.name}</h4>
+                    <span className="text-xs text-[#86868b] font-medium px-2 py-1 bg-[#007AFF]/10 text-[#007AFF] rounded-lg">
+                      {source.url}
+                    </span>
+                  </div>
+                  <div className="text-sm text-[#86868b] font-medium">
+                    <span>用户: {source.username}</span>
+                    {source.defaultRemotePath && (
+                      <span className="ml-4">路径: {source.defaultRemotePath}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEditSource(source)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#00000008] active:bg-[#00000012] transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4 text-[#007AFF]" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSource(source.id)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#FF3B30]/10 active:bg-[#FF3B30]/20 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 text-[#FF3B30]" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* WebDAV 源编辑 Modal */}
+      <Modal
+        isOpen={isSourceModalOpen}
+        onClose={() => setIsSourceModalOpen(false)}
+        size="2xl"
+        scrollBehavior="inside"
+        placement="center"
+        backdrop="blur"
+        classNames={{
+          base: "bg-white/80 backdrop-blur-xl",
+          header: "border-b border-[#d2d2d7]/50",
+          body: "py-6",
+        }}
+      >
+        <ModalContent>
+          <ModalHeader className="text-xl font-semibold text-[#1d1d1f]">
+            {editingSource ? "编辑 WebDAV 源" : "添加 WebDAV 源"}
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-4">
+              <Input
+                label="名称"
+                placeholder="例如：公司服务器、个人 NAS"
+                value={sourceForm.name}
+                onValueChange={(value) => setSourceForm({ ...sourceForm, name: value })}
+                description="用于识别此 WebDAV 源的名称"
+                variant="bordered"
+                isRequired
+                classNames={{
+                  base: "w-full",
+                  input: "text-[#1d1d1f]",
+                  inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                  label: "text-[#1d1d1f] font-medium text-sm",
+                  description: "text-[#86868b] text-xs",
+                }}
+              />
+              <Input
+                label="WebDAV URL"
+                placeholder="https://example.com/webdav"
+                value={sourceForm.url}
+                onValueChange={(value) => setSourceForm({ ...sourceForm, url: value })}
+                description="WebDAV 服务器地址"
+                variant="bordered"
+                isRequired
+                classNames={{
+                  base: "w-full",
+                  input: "text-[#1d1d1f]",
+                  inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                  label: "text-[#1d1d1f] font-medium text-sm",
+                  description: "text-[#86868b] text-xs",
+                }}
+              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="用户名"
+                  placeholder="WebDAV 用户名"
+                  value={sourceForm.username}
+                  onValueChange={(value) => setSourceForm({ ...sourceForm, username: value })}
+                  variant="bordered"
+                  isRequired
+                  classNames={{
+                    base: "w-full",
+                    input: "text-[#1d1d1f]",
+                    inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                    label: "text-[#1d1d1f] font-medium text-sm",
+                  }}
+                />
+                <Input
+                  label="密码"
+                  type="password"
+                  placeholder="WebDAV 密码"
+                  value={sourceForm.password}
+                  onValueChange={(value) => setSourceForm({ ...sourceForm, password: value })}
+                  variant="bordered"
+                  isRequired
+                  classNames={{
+                    base: "w-full",
+                    input: "text-[#1d1d1f]",
+                    inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                    label: "text-[#1d1d1f] font-medium text-sm",
+                  }}
+                />
+              </div>
+              <Input
+                label="默认远程路径（可选）"
+                placeholder="例如：/backups 或 backups/"
+                value={sourceForm.defaultRemotePath}
+                onValueChange={(value) => setSourceForm({ ...sourceForm, defaultRemotePath: value })}
+                description="新项目使用此源时的默认文件夹路径，可在项目设置中覆盖"
+                variant="bordered"
+                classNames={{
+                  base: "w-full",
+                  input: "text-[#1d1d1f]",
+                  inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                  label: "text-[#1d1d1f] font-medium text-sm",
+                  description: "text-[#86868b] text-xs",
+                }}
+              />
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  onPress={() => setIsSourceModalOpen(false)}
+                  variant="light"
+                  className="px-5 py-2.5 rounded-xl font-medium text-[15px] text-[#007AFF] hover:bg-[#007AFF]/10 active:bg-[#007AFF]/20 transition-colors duration-200"
+                >
+                  取消
+                </Button>
+                <Button
+                  onPress={handleSaveSource}
+                  className="px-5 py-2.5 bg-[#007AFF] text-white rounded-xl font-medium text-[15px] hover:bg-[#0051D5] active:bg-[#0040B3] transition-colors duration-200 apple-shadow"
+                >
+                  {editingSource ? "保存" : "添加"}
+                </Button>
+              </div>
+            </div>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
 
       {/* 保存按钮区域 */}
       <div className="flex justify-end items-center gap-4 pt-4">

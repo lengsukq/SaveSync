@@ -23,6 +23,7 @@ interface SyncProject {
   cloudBackupCount?: number;
   createdAt: Date;
   updatedAt: Date;
+  webdavSourceId?: string;
   webdavUrl?: string;
   webdavUsername?: string;
   webdavPassword?: string;
@@ -44,10 +45,20 @@ interface SyncProjectConfig {
   alias?: string;
   sourcePath: string;
   description?: string;
+  webdavSourceId?: string;
   webdavUrl?: string;
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string;
+}
+
+interface WebDAVSource {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  password: string;
+  defaultRemotePath?: string;
 }
 
 interface AppSettings {
@@ -55,10 +66,7 @@ interface AppSettings {
   defaultMaxBackups: number;
   defaultBackupInterval: number;
   theme: 'light' | 'dark' | 'system';
-  defaultWebdavUrl?: string;
-  defaultWebdavUsername?: string;
-  defaultWebdavPassword?: string;
-  defaultWebdavRemotePath?: string;
+  webdavSources: WebDAVSource[];
 }
 
 function getDataDir(): string {
@@ -140,15 +148,27 @@ async function loadSettings(): Promise<AppSettings> {
   try {
     const content = await fs.readFile(settingsFile, 'utf-8');
     const settings = JSON.parse(content);
+    
+    // 迁移旧的单个 WebDAV 配置到新的源列表
+    let webdavSources: WebDAVSource[] = settings.webdavSources || [];
+    if (!webdavSources.length && (settings.defaultWebdavUrl || settings.defaultWebdavUsername)) {
+      // 如果有旧的配置，迁移到新的源列表
+      webdavSources = [{
+        id: `webdav-${Date.now()}`,
+        name: '默认 WebDAV 源',
+        url: settings.defaultWebdavUrl || '',
+        username: settings.defaultWebdavUsername || '',
+        password: settings.defaultWebdavPassword || '',
+        defaultRemotePath: settings.defaultWebdavRemotePath,
+      }];
+    }
+    
     return {
       backupDirectory: settings.backupDirectory || getBackupDir(),
       defaultMaxBackups: settings.defaultMaxBackups ?? 10,
       defaultBackupInterval: settings.defaultBackupInterval ?? 60,
       theme: settings.theme || 'system',
-      defaultWebdavUrl: settings.defaultWebdavUrl,
-      defaultWebdavUsername: settings.defaultWebdavUsername,
-      defaultWebdavPassword: settings.defaultWebdavPassword,
-      defaultWebdavRemotePath: settings.defaultWebdavRemotePath,
+      webdavSources,
     };
   } catch {
     // 返回默认设置
@@ -157,6 +177,7 @@ async function loadSettings(): Promise<AppSettings> {
       defaultMaxBackups: 10,
       defaultBackupInterval: 60,
       theme: 'system',
+      webdavSources: [],
     };
   }
 }
@@ -410,6 +431,7 @@ export function setupIpcHandlers(): void {
         updated_at: project.updatedAt.toISOString(),
         last_backup: project.lastBackup?.toISOString(),
         last_sync: project.lastSync?.toISOString(),
+        webdav_source_id: project.webdavSourceId,
         webdav_url: project.webdavUrl,
         webdav_username: project.webdavUsername,
         webdav_password: project.webdavPassword,
@@ -435,6 +457,7 @@ export function setupIpcHandlers(): void {
       cloudBackupCount: 0,
       createdAt: now,
       updatedAt: now,
+      webdavSourceId: config.webdavSourceId,
       webdavUrl: config.webdavUrl,
       webdavUsername: config.webdavUsername,
       webdavPassword: config.webdavPassword,
@@ -444,25 +467,26 @@ export function setupIpcHandlers(): void {
     projects.push(project);
     await saveProjects(projects);
 
-    return {
-      id: project.id,
-      name: project.name,
-      alias: project.alias,
-      source_path: project.sourcePath,
-      description: project.description,
-      enabled: project.enabled,
-      backup_count: project.backupCount,
-      local_backup_count: project.localBackupCount,
-      cloud_backup_count: project.cloudBackupCount,
-      created_at: project.createdAt.toISOString(),
-      updated_at: project.updatedAt.toISOString(),
-      last_backup: project.lastBackup?.toISOString(),
-      last_sync: project.lastSync?.toISOString(),
-      webdav_url: project.webdavUrl,
-      webdav_username: project.webdavUsername,
-      webdav_password: project.webdavPassword,
-      webdav_remote_path: project.webdavRemotePath,
-    };
+      return {
+        id: project.id,
+        name: project.name,
+        alias: project.alias,
+        source_path: project.sourcePath,
+        description: project.description,
+        enabled: project.enabled,
+        backup_count: project.backupCount,
+        local_backup_count: project.localBackupCount,
+        cloud_backup_count: project.cloudBackupCount,
+        created_at: project.createdAt.toISOString(),
+        updated_at: project.updatedAt.toISOString(),
+        last_backup: project.lastBackup?.toISOString(),
+        last_sync: project.lastSync?.toISOString(),
+        webdav_source_id: project.webdavSourceId,
+        webdav_url: project.webdavUrl,
+        webdav_username: project.webdavUsername,
+        webdav_password: project.webdavPassword,
+        webdav_remote_path: project.webdavRemotePath,
+      };
   });
 
   ipcMain.handle('update-project', async (_event, id: string, updates: any): Promise<any> => {
@@ -477,6 +501,7 @@ export function setupIpcHandlers(): void {
     if (updates.sourcePath !== undefined) project.sourcePath = updates.sourcePath;
     if (updates.description !== undefined) project.description = updates.description;
     if (updates.enabled !== undefined) project.enabled = updates.enabled;
+    if (updates.webdavSourceId !== undefined) project.webdavSourceId = updates.webdavSourceId;
     if (updates.webdavUrl !== undefined) project.webdavUrl = updates.webdavUrl;
     if (updates.webdavUsername !== undefined) project.webdavUsername = updates.webdavUsername;
     if (updates.webdavPassword !== undefined) project.webdavPassword = updates.webdavPassword;
@@ -504,6 +529,7 @@ export function setupIpcHandlers(): void {
       updated_at: project.updatedAt.toISOString(),
       last_backup: project.lastBackup?.toISOString(),
       last_sync: project.lastSync?.toISOString(),
+      webdav_source_id: project.webdavSourceId,
       webdav_url: project.webdavUrl,
       webdav_username: project.webdavUsername,
       webdav_password: project.webdavPassword,
@@ -782,6 +808,36 @@ export function setupIpcHandlers(): void {
 
     const filtered = backups.filter((b) => b.id !== backupId);
     await saveBackups(filtered);
+  });
+
+  ipcMain.handle('get-settings', async (): Promise<any> => {
+    const settings = await loadSettings();
+    return {
+      backup_directory: settings.backupDirectory,
+      default_max_backups: settings.defaultMaxBackups,
+      default_backup_interval: settings.defaultBackupInterval,
+      theme: settings.theme,
+      webdav_sources: settings.webdavSources,
+    };
+  });
+
+  ipcMain.handle('update-settings', async (_event, updates: any): Promise<any> => {
+    const currentSettings = await loadSettings();
+    const newSettings: AppSettings = {
+      backupDirectory: updates.backup_directory !== undefined ? updates.backup_directory : currentSettings.backupDirectory,
+      defaultMaxBackups: updates.default_max_backups !== undefined ? updates.default_max_backups : currentSettings.defaultMaxBackups,
+      defaultBackupInterval: updates.default_backup_interval !== undefined ? updates.default_backup_interval : currentSettings.defaultBackupInterval,
+      theme: updates.theme !== undefined ? updates.theme : currentSettings.theme,
+      webdavSources: updates.webdav_sources !== undefined ? updates.webdav_sources : currentSettings.webdavSources,
+    };
+    await saveSettings(newSettings);
+    return {
+      backup_directory: newSettings.backupDirectory,
+      default_max_backups: newSettings.defaultMaxBackups,
+      default_backup_interval: newSettings.defaultBackupInterval,
+      theme: newSettings.theme,
+      webdav_sources: newSettings.webdavSources,
+    };
   });
 
   ipcMain.handle('show-open-dialog', async (_event, options: any) => {
