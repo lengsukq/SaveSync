@@ -4,7 +4,6 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  useDisclosure,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
@@ -25,7 +24,7 @@ export function SyncProjectManager() {
     selectedProject,
     setSelectedProject,
   } = useSyncProjectStore();
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [isOpen, setIsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<SyncProject | null>(null);
 
   useEffect(() => {
@@ -43,12 +42,16 @@ export function SyncProjectManager() {
 
   const handleCreate = () => {
     setEditingProject(null);
-    onOpen();
+    setIsOpen(true);
+  };
+
+  const handleClose = () => {
+    setIsOpen(false);
   };
 
   const handleEdit = (project: SyncProject) => {
     setEditingProject(project);
-    onOpen();
+    setIsOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -211,10 +214,11 @@ export function SyncProjectManager() {
 
       <Modal 
         isOpen={isOpen} 
-        onClose={onClose}
+        onClose={handleClose}
         size="2xl" 
         scrollBehavior="inside"
         placement="center"
+        backdrop="blur"
         classNames={{
           base: "bg-white/80 backdrop-blur-xl",
           header: "border-b border-[#d2d2d7]/50",
@@ -222,22 +226,18 @@ export function SyncProjectManager() {
         }}
       >
         <ModalContent>
-          {(onModalClose) => (
-            <>
-              <ModalHeader className="text-xl font-semibold text-[#1d1d1f]">
-                {editingProject ? "编辑同步项目" : "添加同步项目"}
-              </ModalHeader>
-              <ModalBody>
-                <SyncProjectForm
-                  project={editingProject}
-                  onSuccess={() => {
-                    onModalClose();
-                    loadProjects();
-                  }}
-                />
-              </ModalBody>
-            </>
-          )}
+          <ModalHeader className="text-xl font-semibold text-[#1d1d1f]">
+            {editingProject ? "编辑同步项目" : "添加同步项目"}
+          </ModalHeader>
+          <ModalBody>
+            <SyncProjectForm
+              project={editingProject}
+              onSuccess={() => {
+                handleClose();
+                loadProjects();
+              }}
+            />
+          </ModalBody>
         </ModalContent>
       </Modal>
 

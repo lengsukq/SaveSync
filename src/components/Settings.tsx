@@ -101,32 +101,29 @@ export function Settings() {
         <Divider className="mb-6" />
 
         <div className="space-y-5">
-          <div>
-            <Input
-              label="备份目录"
-              placeholder="选择备份存储目录"
-              value={settings.backupDirectory}
-              onValueChange={(value) => setSettings({ ...settings, backupDirectory: value })}
-              description="本地备份文件的存储位置"
-              classNames={{
-                base: "w-full",
-                input: "text-[#1d1d1f]",
-                label: "text-[#1d1d1f] font-medium",
-                description: "text-[#86868b] text-xs",
-              }}
-              endContent={
-                <Button
-                  isIconOnly
-                  variant="light"
-                  size="sm"
-                  onPress={handleSelectBackupDirectory}
-                  className="min-w-8 w-8 h-8"
-                >
-                  <FolderOpen className="w-4 h-4 text-[#007AFF]" />
-                </Button>
-              }
-            />
-          </div>
+          <Input
+            label="备份目录"
+            placeholder="选择备份存储目录"
+            value={settings.backupDirectory}
+            onValueChange={(value) => setSettings({ ...settings, backupDirectory: value })}
+            description="本地备份文件的存储位置"
+            variant="bordered"
+            endContent={
+              <button
+                onClick={handleSelectBackupDirectory}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#00000008] active:bg-[#00000012] transition-colors"
+              >
+                <FolderOpen className="w-4 h-4 text-[#007AFF]" />
+              </button>
+            }
+            classNames={{
+              base: "w-full",
+              input: "text-[#1d1d1f]",
+              inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+              label: "text-[#1d1d1f] font-medium text-sm",
+              description: "text-[#86868b] text-xs",
+            }}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Input
@@ -136,10 +133,12 @@ export function Settings() {
               value={settings.defaultMaxBackups.toString()}
               onValueChange={(value) => setSettings({ ...settings, defaultMaxBackups: parseInt(value) || 10 })}
               description="每个项目保留的最大备份数量"
+              variant="bordered"
               classNames={{
                 base: "w-full",
                 input: "text-[#1d1d1f]",
-                label: "text-[#1d1d1f] font-medium",
+                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                label: "text-[#1d1d1f] font-medium text-sm",
                 description: "text-[#86868b] text-xs",
               }}
             />
@@ -150,10 +149,12 @@ export function Settings() {
               value={settings.defaultBackupInterval.toString()}
               onValueChange={(value) => setSettings({ ...settings, defaultBackupInterval: parseInt(value) || 60 })}
               description="自动备份的时间间隔"
+              variant="bordered"
               classNames={{
                 base: "w-full",
                 input: "text-[#1d1d1f]",
-                label: "text-[#1d1d1f] font-medium",
+                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                label: "text-[#1d1d1f] font-medium text-sm",
                 description: "text-[#86868b] text-xs",
               }}
             />
@@ -184,10 +185,12 @@ export function Settings() {
             value={settings.defaultWebdavUrl || ""}
             onValueChange={(value) => setSettings({ ...settings, defaultWebdavUrl: value || undefined })}
             description="WebDAV 服务器地址"
+            variant="bordered"
             classNames={{
               base: "w-full",
               input: "text-[#1d1d1f]",
-              label: "text-[#1d1d1f] font-medium",
+              inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+              label: "text-[#1d1d1f] font-medium text-sm",
               description: "text-[#86868b] text-xs",
             }}
           />
@@ -198,10 +201,12 @@ export function Settings() {
               placeholder="WebDAV 用户名"
               value={settings.defaultWebdavUsername || ""}
               onValueChange={(value) => setSettings({ ...settings, defaultWebdavUsername: value || undefined })}
+              variant="bordered"
               classNames={{
                 base: "w-full",
                 input: "text-[#1d1d1f]",
-                label: "text-[#1d1d1f] font-medium",
+                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                label: "text-[#1d1d1f] font-medium text-sm",
               }}
             />
             <Input
@@ -210,10 +215,12 @@ export function Settings() {
               placeholder="WebDAV 密码"
               value={settings.defaultWebdavPassword || ""}
               onValueChange={(value) => setSettings({ ...settings, defaultWebdavPassword: value || undefined })}
+              variant="bordered"
               classNames={{
                 base: "w-full",
                 input: "text-[#1d1d1f]",
-                label: "text-[#1d1d1f] font-medium",
+                inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+                label: "text-[#1d1d1f] font-medium text-sm",
               }}
             />
           </div>
@@ -224,10 +231,12 @@ export function Settings() {
             value={settings.defaultWebdavRemotePath || ""}
             onValueChange={(value) => setSettings({ ...settings, defaultWebdavRemotePath: value || undefined })}
             description="新项目在 WebDAV 上备份的默认文件夹路径，可在项目设置中覆盖"
+            variant="bordered"
             classNames={{
               base: "w-full",
               input: "text-[#1d1d1f]",
-              label: "text-[#1d1d1f] font-medium",
+              inputWrapper: "border-[#d2d2d7] hover:border-[#86868b] bg-white",
+              label: "text-[#1d1d1f] font-medium text-sm",
               description: "text-[#86868b] text-xs",
             }}
           />
