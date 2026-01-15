@@ -40,11 +40,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build application
-        run: yarn build
-
       - name: Build Electron app (Windows)
-        run: electron-builder --win
+        run: yarn e-build:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ""
@@ -75,11 +72,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build application
-        run: yarn build
-
       - name: Build Electron app (macOS)
-        run: electron-builder --mac
+        run: yarn e-build:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ""

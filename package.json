@@ -18,7 +18,6 @@
     "publish": null,
     "appId": "com.savesync.app",
     "productName": "SaveSync",
-    "publish": null,
     "directories": {
       "output": "release"
     },
