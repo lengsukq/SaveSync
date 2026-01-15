@@ -11,11 +11,22 @@ on:
           - windows
           - macos
           - both
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: false
+        type: string
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build-windows:
     if: github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'both'
     runs-on: windows-latest
+    outputs:
+      artifact-name: ${{ steps.upload.outputs.artifact-name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,6 +50,7 @@ jobs:
           GH_TOKEN: ""
 
       - name: Upload artifacts (Windows)
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: SaveSync-Windows-${{ github.sha }}
@@ -48,6 +60,8 @@ jobs:
   build-macos:
     if: github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'both'
     runs-on: macos-latest
+    outputs:
+      artifact-name: ${{ steps.upload.outputs.artifact-name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,8 +85,76 @@ jobs:
           GH_TOKEN: ""
 
       - name: Upload artifacts (macOS)
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: SaveSync-macOS-${{ github.sha }}
           path: release/*.dmg
           retention-days: 30
+
+  release:
+    if: |
+      github.event.inputs.create_release == 'true' &&
+      (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || 
+       (needs.build-windows.result == 'skipped' && needs.build-macos.result == 'success') ||
+       (needs.build-windows.result == 'success' && needs.build-macos.result == 'skipped'))
+    needs: 
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            DATE=$(date +%Y%m%d)
+            echo "version=v1.${DATE}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download Windows artifacts
+        if: github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'both'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SaveSync-Windows-*
+          merge-multiple: true
+          path: release-windows
+
+      - name: Download macOS artifacts
+        if: github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'both'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: SaveSync-macOS-*
+          merge-multiple: true
+          path: release-macos
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: SaveSync ${{ steps.version.outputs.version }}
+          body: |
+            ## SaveSync ${{ steps.version.outputs.version }}
+
+            ### 下载
+            - **Windows**: 下载 `.exe` 安装包
+            - **macOS**: 下载 `.dmg` 安装包
+
+            ### 变更
+            - 查看 [提交历史](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})
+
+            ---
+            *自动构建于 ${{ github.event.head_commit.timestamp || github.run_started_at }}*
+          files: |
+            release-windows/**
+            release-macos/**
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
