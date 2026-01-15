@@ -15,6 +15,7 @@
     "electron": "electron ."
   },
   "build": {
+    "publish": null,
     "appId": "com.savesync.app",
     "productName": "SaveSync",
     "directories": {
