@@ -27,6 +27,7 @@ export class SyncProjectService {
         webdavUsername: project.webdav_username,
         webdavPassword: project.webdav_password,
         webdavRemotePath: project.webdav_remote_path,
+        compress: project.compress !== false, // 默认为 true
       }));
     } catch (error) {
       console.error("Failed to list projects:", error);
@@ -39,6 +40,7 @@ export class SyncProjectService {
     alias?: string;
     sourcePath: string;
     description?: string;
+    compress?: boolean;
     webdavSourceId?: string;
     webdavUrl?: string;
     webdavUsername?: string;
@@ -68,6 +70,7 @@ export class SyncProjectService {
       webdavUsername: project.webdav_username,
       webdavPassword: project.webdav_password,
       webdavRemotePath: project.webdav_remote_path,
+      compress: project.compress !== false, // 默认为 true
     };
   }
 
@@ -98,6 +101,7 @@ export class SyncProjectService {
       webdavUsername: project.webdav_username,
       webdavPassword: project.webdav_password,
       webdavRemotePath: project.webdav_remote_path,
+      compress: project.compress !== false, // 默认为 true
     };
   }
 

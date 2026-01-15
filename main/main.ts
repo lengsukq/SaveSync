@@ -8,6 +8,11 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 
+// 在应用启动前配置命令行参数以减少 DevTools 警告
+// 禁用自动填充相关功能以减少 DevTools 协议错误
+// 注意：Autofill.enable 错误是 DevTools 内部的协议错误，不影响应用功能
+app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,AutofillEnableAccountWalletStorage');
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,

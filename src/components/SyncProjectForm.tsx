@@ -22,6 +22,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
   const [webdavUsername, setWebdavUsername] = useState("");
   const [webdavPassword, setWebdavPassword] = useState("");
   const [webdavRemotePath, setWebdavRemotePath] = useState("");
+  const [compress, setCompress] = useState(true);
   const [webdavSources, setWebdavSources] = useState<WebDAVSource[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,6 +51,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
       setWebdavUsername(project.webdavUsername || "");
       setWebdavPassword(project.webdavPassword || "");
       setWebdavRemotePath(project.webdavRemotePath || "");
+      setCompress(project.compress !== false); // 默认为 true
     } else {
       // 重置表单
       setName("");
@@ -62,6 +64,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
       setWebdavUsername("");
       setWebdavPassword("");
       setWebdavRemotePath("");
+      setCompress(true); // 默认压缩
     }
   }, [project]);
 
@@ -127,6 +130,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           sourcePath,
           description,
           enabled,
+          compress,
           webdavSourceId: webdavSourceId || undefined,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
@@ -139,6 +143,7 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
           alias: alias.trim() || undefined,
           sourcePath,
           description,
+          compress,
           webdavSourceId: webdavSourceId || undefined,
           webdavUrl: webdavUrl.trim() || undefined,
           webdavUsername: webdavUsername.trim() || undefined,
@@ -202,6 +207,12 @@ export function SyncProjectForm({ project, onSuccess }: SyncProjectFormProps) {
       <Switch isSelected={enabled} onValueChange={setEnabled}>
         启用自动备份
       </Switch>
+      <Switch isSelected={compress} onValueChange={setCompress}>
+        压缩备份
+      </Switch>
+      <div className="text-xs text-gray-500 -mt-2 ml-6">
+        开启后将备份压缩为 ZIP 文件，节省空间；关闭后直接同步文件夹，便于在服务器上直接查看
+      </div>
       
       <Divider className="my-4" />
       

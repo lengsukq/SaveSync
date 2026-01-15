@@ -17,16 +17,18 @@ export interface SyncProject {
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string;
+  compress?: boolean; // 是否压缩，默认为 true（向后兼容）
 }
 
 export interface Backup {
   id: string;
   projectId: string;
   name: string;
-  path: string;
+  path: string; // 压缩文件路径或文件夹路径
   size: number;
   createdAt: Date;
   type: 'local' | 'cloud';
+  isCompressed?: boolean; // 是否压缩，默认为 true（向后兼容）
 }
 
 export interface SyncProjectConfig {
@@ -39,6 +41,7 @@ export interface SyncProjectConfig {
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string;
+  compress?: boolean; // 是否压缩
 }
 
 export interface WebDAVSource {

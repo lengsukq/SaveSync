@@ -20,10 +20,13 @@ import {
   unzipFile,
   copyDirectory,
   generateId,
+  calculateDirSize,
 } from './fileUtils.js';
 import {
   uploadToWebDAV,
+  uploadDirectoryToWebDAV,
   downloadFromWebDAV,
+  downloadDirectoryFromWebDAV,
   createWebDAVDirectory,
   testWebDAVConnection,
   listWebDAVDirectory,
@@ -59,6 +62,7 @@ function mapProjectToResponse(project: SyncProject, backups: Backup[]) {
     webdav_username: project.webdavUsername,
     webdav_password: project.webdavPassword,
     webdav_remote_path: project.webdavRemotePath,
+    compress: project.compress !== false, // 默认为 true
   };
 }
 
@@ -92,6 +96,7 @@ export function setupIpcHandlers(): void {
       webdavUsername: config.webdavUsername,
       webdavPassword: config.webdavPassword,
       webdavRemotePath: config.webdavRemotePath,
+      compress: config.compress !== false, // 默认为 true
     };
 
     projects.push(project);
@@ -118,6 +123,7 @@ export function setupIpcHandlers(): void {
     if (updates.webdavUsername !== undefined) project.webdavUsername = updates.webdavUsername;
     if (updates.webdavPassword !== undefined) project.webdavPassword = updates.webdavPassword;
     if (updates.webdavRemotePath !== undefined) project.webdavRemotePath = updates.webdavRemotePath;
+    if (updates.compress !== undefined) project.compress = updates.compress;
 
     project.updatedAt = new Date();
     await saveProjects(projects);
@@ -151,20 +157,41 @@ export function setupIpcHandlers(): void {
 
     const backupId = generateId();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const backupName = `${project.name.replace(/\s/g, '_')}_${timestamp}.zip`;
-    const zipPath = path.join(getBackupDir(), backupName);
+    
+    // 根据 compress 选项决定是否压缩（默认为 true 以保持向后兼容）
+    const compress = project.compress !== false;
+    
+    let backupName: string;
+    let backupPath: string;
+    let backupSize: number;
+    let isCompressed: boolean;
 
-    const size = await zipDirectory(sourcePath, zipPath);
+    if (compress) {
+      // 压缩模式：压缩文件夹为 ZIP
+      backupName = `${project.name.replace(/\s/g, '_')}_${timestamp}.zip`;
+      backupPath = path.join(getBackupDir(), backupName);
+      backupSize = await zipDirectory(sourcePath, backupPath);
+      isCompressed = true;
+    } else {
+      // 非压缩模式：直接复制文件夹
+      backupName = `${project.name.replace(/\s/g, '_')}_${timestamp}`;
+      backupPath = path.join(getBackupDir(), backupName);
+      await copyDirectory(sourcePath, backupPath);
+      backupSize = await calculateDirSize(backupPath);
+      isCompressed = false;
+    }
+
     const backupType: 'local' | 'cloud' = project.webdavUrl ? 'cloud' : 'local';
 
     const backup: Backup = {
       id: backupId,
       projectId,
       name: backupName,
-      path: zipPath,
-      size,
+      path: backupPath,
+      size: backupSize,
       createdAt: new Date(),
       type: backupType,
+      isCompressed,
     };
 
     // Upload to WebDAV if configured
@@ -186,6 +213,8 @@ export function setupIpcHandlers(): void {
 
       // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
       let remoteDir = project.webdavRemotePath || project.id;
+      // 规范化路径：移除多余的斜杠
+      remoteDir = remoteDir.replace(/\/+/g, '/');
       // 确保路径格式正确
       if (!remoteDir.startsWith('/')) {
         remoteDir = `/${remoteDir}`;
@@ -195,19 +224,40 @@ export function setupIpcHandlers(): void {
       }
       
       // 创建远程目录（如果不存在）
+      // 某些WebDAV服务器可能不支持MKCOL，或者目录已存在，所以这里允许失败
       try {
         await createWebDAVDirectory(webdavUrl, webdavUsername, webdavPassword, remoteDir);
-      } catch (error) {
-        console.warn(`Failed to create WebDAV directory, continuing anyway: ${error}`);
+      } catch (error: any) {
+        // 如果错误是405（Method Not Allowed），可能服务器不支持MKCOL，尝试继续
+        // 如果错误是403（Forbidden），可能是权限问题，但继续尝试上传，让上传操作返回更具体的错误
+        const errorMessage = error?.message || String(error);
+        if (errorMessage.includes('405') || errorMessage.includes('Method Not Allowed')) {
+          console.warn(`WebDAV server may not support MKCOL method, continuing with upload: ${errorMessage}`);
+        } else {
+          console.warn(`Failed to create WebDAV directory, continuing anyway: ${errorMessage}`);
+        }
       }
       
-      // 上传文件到远程目录
-      const remotePath = `${remoteDir}${backupName}`;
+      // 上传到远程目录
       try {
-        await uploadToWebDAV(zipPath, webdavUrl, webdavUsername, webdavPassword, remotePath);
+        if (compress) {
+          // 压缩模式：上传单个 ZIP 文件
+          const remotePath = `${remoteDir}${backupName}`;
+          await uploadToWebDAV(backupPath, webdavUrl, webdavUsername, webdavPassword, remotePath);
+        } else {
+          // 非压缩模式：递归上传整个文件夹
+          await uploadDirectoryToWebDAV(backupPath, webdavUrl, webdavUsername, webdavPassword, remoteDir);
+        }
         project.lastSync = new Date();
-      } catch (error) {
-        throw new Error(`WebDAV upload failed: ${error}`);
+      } catch (error: any) {
+        // 如果错误消息已经包含 "WebDAV upload failed"，直接抛出原错误
+        // 否则包装错误消息
+        const errorMessage = error?.message || String(error);
+        if (errorMessage.includes('WebDAV upload failed')) {
+          throw error;
+        } else {
+          throw new Error(`WebDAV upload failed: ${errorMessage}`);
+        }
       }
     }
 
@@ -261,7 +311,10 @@ export function setupIpcHandlers(): void {
 
     await ensureDataDir();
 
-    let zipPath = backup.path;
+    // 判断是否压缩（默认为 true 以保持向后兼容）
+    const isCompressed = backup.isCompressed !== false;
+
+    let backupSourcePath: string;
 
     // Download from WebDAV if it's a cloud backup
     if (backup.type === 'cloud') {
@@ -284,7 +337,6 @@ export function setupIpcHandlers(): void {
         throw new Error('WebDAV credentials not configured');
       }
 
-      const tempZip = path.join(getTempDir(), backup.name);
       // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
       let remoteDir = project.webdavRemotePath || project.id;
       if (!remoteDir.startsWith('/')) {
@@ -293,19 +345,30 @@ export function setupIpcHandlers(): void {
       if (!remoteDir.endsWith('/')) {
         remoteDir = `${remoteDir}/`;
       }
-      const remotePath = `${remoteDir}${backup.name}`;
-      await downloadFromWebDAV(webdavUrl, webdavUsername, webdavPassword, remotePath, tempZip);
-      zipPath = tempZip;
+
+      if (isCompressed) {
+        // 压缩模式：下载单个 ZIP 文件
+        const tempZip = path.join(getTempDir(), backup.name);
+        const remotePath = `${remoteDir}${backup.name}`;
+        await downloadFromWebDAV(webdavUrl, webdavUsername, webdavPassword, remotePath, tempZip);
+        backupSourcePath = tempZip;
+      } else {
+        // 非压缩模式：下载整个文件夹
+        const tempDir = path.join(getTempDir(), `restore_${generateId()}`);
+        const remoteFolderPath = `${remoteDir}${backup.name}/`;
+        await downloadDirectoryFromWebDAV(webdavUrl, webdavUsername, webdavPassword, remoteFolderPath, tempDir);
+        backupSourcePath = tempDir;
+      }
+    } else {
+      // 本地备份：直接使用备份路径
+      backupSourcePath = backup.path;
     }
 
     try {
-      await fs.access(zipPath);
+      await fs.access(backupSourcePath);
     } catch {
-      throw new Error('Backup file not found');
+      throw new Error('Backup file or directory not found');
     }
-
-    const tempExtractDir = path.join(getTempDir(), `extract_${generateId()}`);
-    await unzipFile(zipPath, tempExtractDir);
 
     // Backup current save if it exists
     const sourcePath = project.sourcePath;
@@ -326,25 +389,37 @@ export function setupIpcHandlers(): void {
       // Ignore if doesn't exist
     }
 
-    // Copy extracted files to save path
-    const entries = await fs.readdir(tempExtractDir);
-    if (entries.length === 1) {
-      const entryPath = path.join(tempExtractDir, entries[0]);
-      const stats = await fs.stat(entryPath);
-      if (stats.isDirectory()) {
-        await copyDirectory(entryPath, sourcePath);
+    // 根据备份格式恢复
+    if (isCompressed) {
+      // 压缩模式：解压后复制
+      const tempExtractDir = path.join(getTempDir(), `extract_${generateId()}`);
+      await unzipFile(backupSourcePath, tempExtractDir);
+
+      // Copy extracted files to save path
+      const entries = await fs.readdir(tempExtractDir);
+      if (entries.length === 1) {
+        const entryPath = path.join(tempExtractDir, entries[0]);
+        const stats = await fs.stat(entryPath);
+        if (stats.isDirectory()) {
+          await copyDirectory(entryPath, sourcePath);
+        } else {
+          await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+          await fs.copyFile(entryPath, sourcePath);
+        }
       } else {
-        await fs.mkdir(path.dirname(sourcePath), { recursive: true });
-        await fs.copyFile(entryPath, sourcePath);
+        await copyDirectory(tempExtractDir, sourcePath);
       }
+
+      // Clean up temporary files
+      await fs.rm(tempExtractDir, { recursive: true }).catch(() => {});
     } else {
-      await copyDirectory(tempExtractDir, sourcePath);
+      // 非压缩模式：直接复制
+      await copyDirectory(backupSourcePath, sourcePath);
     }
 
     // Clean up temporary files
-    await fs.rm(tempExtractDir, { recursive: true }).catch(() => {});
     if (backup.type === 'cloud') {
-      await fs.unlink(zipPath).catch(() => {});
+      await fs.rm(backupSourcePath, { recursive: true }).catch(() => {});
     }
 
     project.updatedAt = new Date();

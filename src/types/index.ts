@@ -17,6 +17,7 @@ export interface SyncProject {
   webdavUsername?: string;
   webdavPassword?: string;
   webdavRemotePath?: string; // WebDAV 远程路径（文件夹），例如：/backups/project1
+  compress?: boolean; // 是否压缩，默认为 true（向后兼容）
 }
 
 export interface Backup {
@@ -27,6 +28,7 @@ export interface Backup {
   size: number;
   createdAt: Date;
   type: 'local' | 'cloud';
+  isCompressed?: boolean; // 是否压缩，默认为 true（向后兼容）
 }
 
 export interface SyncProjectConfig {
