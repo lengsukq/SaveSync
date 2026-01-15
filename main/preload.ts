@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (updates: any) => ipcRenderer.invoke('update-settings', updates),
+  
+  // WebDAV test
+  testWebDAVConnection: (url: string, username: string, password: string) => ipcRenderer.invoke('test-webdav-connection', url, username, password),
+  
+  // WebDAV directory browser
+  listWebDAVDirectory: (url: string, username: string, password: string, remotePath?: string) => ipcRenderer.invoke('list-webdav-directory', url, username, password, remotePath),
 });
 
 // Type definitions for TypeScript
@@ -38,6 +44,8 @@ declare global {
       showOpenDialog: (options: any) => Promise<any>;
       getSettings: () => Promise<any>;
       updateSettings: (updates: any) => Promise<any>;
+      testWebDAVConnection: (url: string, username: string, password: string) => Promise<{ success: boolean; message: string }>;
+      listWebDAVDirectory: (url: string, username: string, password: string, remotePath?: string) => Promise<Array<{ path: string; name: string; is_directory: boolean }>>;
     };
   }
 }

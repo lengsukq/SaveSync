@@ -12,6 +12,8 @@ declare global {
       showOpenDialog: (options: any) => Promise<any>;
       getSettings: () => Promise<any>;
       updateSettings: (updates: any) => Promise<any>;
+      testWebDAVConnection: (url: string, username: string, password: string) => Promise<{ success: boolean; message: string }>;
+      listWebDAVDirectory: (url: string, username: string, password: string, remotePath?: string) => Promise<Array<{ path: string; name: string; is_directory: boolean }>>;
     };
   }
 }

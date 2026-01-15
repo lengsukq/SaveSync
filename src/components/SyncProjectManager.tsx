@@ -47,6 +47,14 @@ export function SyncProjectManager() {
 
   const handleClose = () => {
     setIsOpen(false);
+    setEditingProject(null);
+  };
+
+  const handleSuccess = async () => {
+    setIsOpen(false);
+    setEditingProject(null);
+    // 重新加载项目列表以确保数据同步
+    await loadProjects();
   };
 
   const handleEdit = (project: SyncProject) => {
@@ -232,10 +240,7 @@ export function SyncProjectManager() {
           <ModalBody>
             <SyncProjectForm
               project={editingProject}
-              onSuccess={() => {
-                handleClose();
-                loadProjects();
-              }}
+              onSuccess={handleSuccess}
             />
           </ModalBody>
         </ModalContent>

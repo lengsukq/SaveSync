@@ -1,405 +1,33 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
-import { createReadStream, createWriteStream } from 'fs';
-import archiver from 'archiver';
-import extractZip from 'extract-zip';
 import * as https from 'https';
 import * as http from 'http';
-import { URL } from 'url';
-
-interface SyncProject {
-  id: string;
-  name: string;
-  alias?: string;
-  sourcePath: string;
-  description?: string;
-  enabled: boolean;
-  lastBackup?: Date;
-  lastSync?: Date;
-  backupCount: number;
-  localBackupCount?: number;
-  cloudBackupCount?: number;
-  createdAt: Date;
-  updatedAt: Date;
-  webdavSourceId?: string;
-  webdavUrl?: string;
-  webdavUsername?: string;
-  webdavPassword?: string;
-  webdavRemotePath?: string;
-}
-
-interface Backup {
-  id: string;
-  projectId: string;
-  name: string;
-  path: string;
-  size: number;
-  createdAt: Date;
-  type: 'local' | 'cloud';
-}
-
-interface SyncProjectConfig {
-  name: string;
-  alias?: string;
-  sourcePath: string;
-  description?: string;
-  webdavSourceId?: string;
-  webdavUrl?: string;
-  webdavUsername?: string;
-  webdavPassword?: string;
-  webdavRemotePath?: string;
-}
-
-interface WebDAVSource {
-  id: string;
-  name: string;
-  url: string;
-  username: string;
-  password: string;
-  defaultRemotePath?: string;
-}
-
-interface AppSettings {
-  backupDirectory: string;
-  defaultMaxBackups: number;
-  defaultBackupInterval: number;
-  theme: 'light' | 'dark' | 'system';
-  webdavSources: WebDAVSource[];
-}
-
-function getDataDir(): string {
-  const platform = process.platform;
-  let baseDir: string;
-
-  if (platform === 'win32') {
-    baseDir = path.join(os.homedir(), 'AppData', 'Roaming');
-  } else if (platform === 'darwin') {
-    baseDir = path.join(os.homedir(), 'Library', 'Application Support');
-  } else {
-    baseDir = path.join(os.homedir(), '.local', 'share');
-  }
-
-  return path.join(baseDir, 'SaveSync');
-}
-
-function getBackupDir(): string {
-  return path.join(getDataDir(), 'backups');
-}
-
-function getTempDir(): string {
-  return path.join(getDataDir(), 'temp');
-}
-
-async function ensureDataDir(): Promise<void> {
-  const dataDir = getDataDir();
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.mkdir(getBackupDir(), { recursive: true });
-  await fs.mkdir(getTempDir(), { recursive: true });
-}
-
-async function loadProjects(): Promise<SyncProject[]> {
-  const dataFile = path.join(getDataDir(), 'projects.json');
-  try {
-    const content = await fs.readFile(dataFile, 'utf-8');
-    const projects = JSON.parse(content);
-    return projects.map((project: any) => ({
-      ...project,
-      sourcePath: project.sourcePath || project.savePath, // Migration: support old field name
-      createdAt: new Date(project.createdAt),
-      updatedAt: new Date(project.updatedAt),
-      lastBackup: project.lastBackup ? new Date(project.lastBackup) : undefined,
-      lastSync: project.lastSync ? new Date(project.lastSync) : undefined,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-async function saveProjects(projects: SyncProject[]): Promise<void> {
-  await ensureDataDir();
-  const dataFile = path.join(getDataDir(), 'projects.json');
-  await fs.writeFile(dataFile, JSON.stringify(projects, null, 2), 'utf-8');
-}
-
-async function loadBackups(): Promise<Backup[]> {
-  const backupFile = path.join(getDataDir(), 'backups.json');
-  try {
-    const content = await fs.readFile(backupFile, 'utf-8');
-    const backups = JSON.parse(content);
-    return backups.map((backup: any) => ({
-      ...backup,
-      createdAt: new Date(backup.createdAt),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-async function saveBackups(backups: Backup[]): Promise<void> {
-  await ensureDataDir();
-  const backupFile = path.join(getDataDir(), 'backups.json');
-  await fs.writeFile(backupFile, JSON.stringify(backups, null, 2), 'utf-8');
-}
-
-async function loadSettings(): Promise<AppSettings> {
-  const settingsFile = path.join(getDataDir(), 'settings.json');
-  try {
-    const content = await fs.readFile(settingsFile, 'utf-8');
-    const settings = JSON.parse(content);
-    
-    // 迁移旧的单个 WebDAV 配置到新的源列表
-    let webdavSources: WebDAVSource[] = settings.webdavSources || [];
-    if (!webdavSources.length && (settings.defaultWebdavUrl || settings.defaultWebdavUsername)) {
-      // 如果有旧的配置，迁移到新的源列表
-      webdavSources = [{
-        id: `webdav-${Date.now()}`,
-        name: '默认 WebDAV 源',
-        url: settings.defaultWebdavUrl || '',
-        username: settings.defaultWebdavUsername || '',
-        password: settings.defaultWebdavPassword || '',
-        defaultRemotePath: settings.defaultWebdavRemotePath,
-      }];
-    }
-    
-    return {
-      backupDirectory: settings.backupDirectory || getBackupDir(),
-      defaultMaxBackups: settings.defaultMaxBackups ?? 10,
-      defaultBackupInterval: settings.defaultBackupInterval ?? 60,
-      theme: settings.theme || 'system',
-      webdavSources,
-    };
-  } catch {
-    // 返回默认设置
-    return {
-      backupDirectory: getBackupDir(),
-      defaultMaxBackups: 10,
-      defaultBackupInterval: 60,
-      theme: 'system',
-      webdavSources: [],
-    };
-  }
-}
-
-async function saveSettings(settings: AppSettings): Promise<void> {
-  await ensureDataDir();
-  const settingsFile = path.join(getDataDir(), 'settings.json');
-  await fs.writeFile(settingsFile, JSON.stringify(settings, null, 2), 'utf-8');
-}
-
-async function calculateDirSize(dirPath: string): Promise<number> {
-  let size = 0;
-  try {
-    const stats = await fs.stat(dirPath);
-    if (stats.isFile()) {
-      return stats.size;
-    }
-
-    const entries = await fs.readdir(dirPath);
-    for (const entry of entries) {
-      const entryPath = path.join(dirPath, entry);
-      size += await calculateDirSize(entryPath);
-    }
-  } catch {
-    // Ignore errors
-  }
-  return size;
-}
-
-async function zipDirectory(sourcePath: string, zipPath: string): Promise<number> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const output = createWriteStream(zipPath);
-      const archive = (archiver as any)('zip', { zlib: { level: 9 } });
-
-      output.on('close', () => {
-        fs.stat(zipPath)
-          .then((stats) => resolve(stats.size))
-          .catch(reject);
-      });
-
-      archive.on('error', reject);
-      archive.pipe(output);
-
-      const stats = await fs.stat(sourcePath);
-      if (stats.isDirectory()) {
-        archive.directory(sourcePath, false);
-      } else {
-        archive.file(sourcePath, { name: path.basename(sourcePath) });
-      }
-
-      archive.finalize();
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-async function unzipFile(zipPath: string, destDir: string): Promise<void> {
-  await fs.mkdir(destDir, { recursive: true });
-  await extractZip(zipPath, { dir: destDir });
-}
-
-async function uploadToWebDAV(
-  filePath: string,
-  url: string,
-  username: string,
-  password: string,
-  remotePath: string
-): Promise<void> {
-  const fullUrl = url.endsWith('/') ? `${url}${remotePath}` : `${url}/${remotePath}`;
-  const parsedUrl = new URL(fullUrl);
-  const isHttps = parsedUrl.protocol === 'https:';
-  const httpModule = isHttps ? https : http;
-
-  const fileContent = await fs.readFile(filePath);
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: 'PUT',
-      headers: {
-        'Content-Length': fileContent.length,
-        'Authorization': `Basic ${auth}`,
-      },
-    };
-
-    const req = httpModule.request(options, (res) => {
-      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-        resolve();
-      } else {
-        reject(new Error(`WebDAV upload failed: ${res.statusCode}`));
-      }
-    });
-
-    req.on('error', reject);
-    req.write(fileContent);
-    req.end();
-  });
-}
-
-async function createWebDAVDirectory(
-  url: string,
-  username: string,
-  password: string,
-  remotePath: string
-): Promise<void> {
-  // 确保路径以 / 开头
-  const normalizedPath = remotePath.startsWith('/') ? remotePath : `/${remotePath}`;
-  // 确保路径以 / 结尾（WebDAV 目录需要）
-  const dirPath = normalizedPath.endsWith('/') ? normalizedPath : `${normalizedPath}/`;
-  
-  const fullUrl = url.endsWith('/') ? `${url}${dirPath}` : `${url}${dirPath}`;
-  const parsedUrl = new URL(fullUrl);
-  const isHttps = parsedUrl.protocol === 'https:';
-  const httpModule = isHttps ? https : http;
-
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: 'MKCOL',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Length': '0',
-      },
-    };
-
-    const req = httpModule.request(options, (res) => {
-      // 201 Created 表示成功创建，409 Conflict 表示已存在（也算成功）
-      if (res.statusCode === 201 || res.statusCode === 409) {
-        resolve();
-      } else if (res.statusCode === 404) {
-        // 如果父目录不存在，尝试创建父目录
-        const parentPath = dirPath.split('/').slice(0, -2).join('/') + '/';
-        if (parentPath && parentPath !== '/') {
-          createWebDAVDirectory(url, username, password, parentPath)
-            .then(() => createWebDAVDirectory(url, username, password, dirPath))
-            .then(resolve)
-            .catch(reject);
-        } else {
-          reject(new Error(`WebDAV directory creation failed: ${res.statusCode}`));
-        }
-      } else {
-        reject(new Error(`WebDAV directory creation failed: ${res.statusCode}`));
-      }
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function downloadFromWebDAV(
-  url: string,
-  username: string,
-  password: string,
-  remotePath: string,
-  localPath: string
-): Promise<void> {
-  const fullUrl = url.endsWith('/') ? `${url}${remotePath}` : `${url}/${remotePath}`;
-  const parsedUrl = new URL(fullUrl);
-  const isHttps = parsedUrl.protocol === 'https:';
-  const httpModule = isHttps ? https : http;
-
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-      },
-    };
-
-    const req = httpModule.request(options, (res) => {
-      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-        const fileStream = createWriteStream(localPath);
-        res.pipe(fileStream);
-        fileStream.on('finish', () => {
-          fileStream.close();
-          resolve();
-        });
-        fileStream.on('error', reject);
-      } else {
-        reject(new Error(`WebDAV download failed: ${res.statusCode}`));
-      }
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-async function copyDirectory(source: string, dest: string): Promise<void> {
-  const stats = await fs.stat(source);
-  if (stats.isDirectory()) {
-    await fs.mkdir(dest, { recursive: true });
-    const entries = await fs.readdir(source);
-    for (const entry of entries) {
-      const sourcePath = path.join(source, entry);
-      const destPath = path.join(dest, entry);
-      await copyDirectory(sourcePath, destPath);
-    }
-  } else {
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.copyFile(source, dest);
-  }
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
+import { SyncProject, Backup, SyncProjectConfig, AppSettings } from './types.js';
+import {
+  loadProjects,
+  saveProjects,
+  loadBackups,
+  saveBackups,
+  loadSettings,
+  saveSettings,
+  getBackupDir,
+  getTempDir,
+  ensureDataDir,
+} from './dataStorage.js';
+import {
+  zipDirectory,
+  unzipFile,
+  copyDirectory,
+  generateId,
+} from './fileUtils.js';
+import {
+  uploadToWebDAV,
+  downloadFromWebDAV,
+  createWebDAVDirectory,
+  testWebDAVConnection,
+  listWebDAVDirectory,
+} from './webdav.js';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -407,37 +35,39 @@ export function setMainWindow(window: BrowserWindow | null): void {
   mainWindow = window;
 }
 
+function mapProjectToResponse(project: SyncProject, backups: Backup[]) {
+  const projectBackups = backups.filter((b) => b.projectId === project.id);
+  const localBackups = projectBackups.filter((b) => b.type === 'local');
+  const cloudBackups = projectBackups.filter((b) => b.type === 'cloud');
+
+  return {
+    id: project.id,
+    name: project.name,
+    alias: project.alias,
+    source_path: project.sourcePath,
+    description: project.description,
+    enabled: project.enabled,
+    backup_count: project.backupCount,
+    local_backup_count: localBackups.length,
+    cloud_backup_count: cloudBackups.length,
+    created_at: project.createdAt.toISOString(),
+    updated_at: project.updatedAt.toISOString(),
+    last_backup: project.lastBackup?.toISOString(),
+    last_sync: project.lastSync?.toISOString(),
+    webdav_source_id: project.webdavSourceId,
+    webdav_url: project.webdavUrl,
+    webdav_username: project.webdavUsername,
+    webdav_password: project.webdavPassword,
+    webdav_remote_path: project.webdavRemotePath,
+  };
+}
+
 export function setupIpcHandlers(): void {
+  // Project handlers
   ipcMain.handle('list-projects', async (): Promise<any[]> => {
     const projects = await loadProjects();
     const backups = await loadBackups();
-    
-    return projects.map((project) => {
-      const projectBackups = backups.filter((b) => b.projectId === project.id);
-      const localBackups = projectBackups.filter((b) => b.type === 'local');
-      const cloudBackups = projectBackups.filter((b) => b.type === 'cloud');
-      
-      return {
-        id: project.id,
-        name: project.name,
-        alias: project.alias,
-        source_path: project.sourcePath,
-        description: project.description,
-        enabled: project.enabled,
-        backup_count: project.backupCount,
-        local_backup_count: localBackups.length,
-        cloud_backup_count: cloudBackups.length,
-        created_at: project.createdAt.toISOString(),
-        updated_at: project.updatedAt.toISOString(),
-        last_backup: project.lastBackup?.toISOString(),
-        last_sync: project.lastSync?.toISOString(),
-        webdav_source_id: project.webdavSourceId,
-        webdav_url: project.webdavUrl,
-        webdav_username: project.webdavUsername,
-        webdav_password: project.webdavPassword,
-        webdav_remote_path: project.webdavRemotePath,
-      };
-    });
+    return projects.map((project) => mapProjectToResponse(project, backups));
   });
 
   ipcMain.handle('create-project', async (_event, config: SyncProjectConfig): Promise<any> => {
@@ -467,26 +97,8 @@ export function setupIpcHandlers(): void {
     projects.push(project);
     await saveProjects(projects);
 
-      return {
-        id: project.id,
-        name: project.name,
-        alias: project.alias,
-        source_path: project.sourcePath,
-        description: project.description,
-        enabled: project.enabled,
-        backup_count: project.backupCount,
-        local_backup_count: project.localBackupCount,
-        cloud_backup_count: project.cloudBackupCount,
-        created_at: project.createdAt.toISOString(),
-        updated_at: project.updatedAt.toISOString(),
-        last_backup: project.lastBackup?.toISOString(),
-        last_sync: project.lastSync?.toISOString(),
-        webdav_source_id: project.webdavSourceId,
-        webdav_url: project.webdavUrl,
-        webdav_username: project.webdavUsername,
-        webdav_password: project.webdavPassword,
-        webdav_remote_path: project.webdavRemotePath,
-      };
+    const backups = await loadBackups();
+    return mapProjectToResponse(project, backups);
   });
 
   ipcMain.handle('update-project', async (_event, id: string, updates: any): Promise<any> => {
@@ -511,30 +123,7 @@ export function setupIpcHandlers(): void {
     await saveProjects(projects);
 
     const backups = await loadBackups();
-    const projectBackups = backups.filter((b) => b.projectId === project.id);
-    const localBackups = projectBackups.filter((b) => b.type === 'local');
-    const cloudBackups = projectBackups.filter((b) => b.type === 'cloud');
-
-    return {
-      id: project.id,
-      name: project.name,
-      alias: project.alias,
-      source_path: project.sourcePath,
-      description: project.description,
-      enabled: project.enabled,
-      backup_count: project.backupCount,
-      local_backup_count: localBackups.length,
-      cloud_backup_count: cloudBackups.length,
-      created_at: project.createdAt.toISOString(),
-      updated_at: project.updatedAt.toISOString(),
-      last_backup: project.lastBackup?.toISOString(),
-      last_sync: project.lastSync?.toISOString(),
-      webdav_source_id: project.webdavSourceId,
-      webdav_url: project.webdavUrl,
-      webdav_username: project.webdavUsername,
-      webdav_password: project.webdavPassword,
-      webdav_remote_path: project.webdavRemotePath,
-    };
+    return mapProjectToResponse(project, backups);
   });
 
   ipcMain.handle('delete-project', async (_event, id: string): Promise<void> => {
@@ -543,6 +132,7 @@ export function setupIpcHandlers(): void {
     await saveProjects(filtered);
   });
 
+  // Backup handlers
   ipcMain.handle('create-backup', async (_event, projectId: string): Promise<any> => {
     const projects = await loadProjects();
     const project = projects.find((p) => p.id === projectId);
@@ -579,6 +169,21 @@ export function setupIpcHandlers(): void {
 
     // Upload to WebDAV if configured
     if (backupType === 'cloud' && project.webdavUrl && project.webdavUsername && project.webdavPassword) {
+      // 获取 WebDAV 凭据（优先使用 webdavSourceId）
+      let webdavUrl = project.webdavUrl;
+      let webdavUsername = project.webdavUsername;
+      let webdavPassword = project.webdavPassword;
+
+      if (project.webdavSourceId) {
+        const settings = await loadSettings();
+        const webdavSource = settings.webdavSources.find(s => s.id === project.webdavSourceId);
+        if (webdavSource) {
+          webdavUrl = webdavSource.url;
+          webdavUsername = webdavSource.username;
+          webdavPassword = webdavSource.password;
+        }
+      }
+
       // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
       let remoteDir = project.webdavRemotePath || project.id;
       // 确保路径格式正确
@@ -591,12 +196,7 @@ export function setupIpcHandlers(): void {
       
       // 创建远程目录（如果不存在）
       try {
-        await createWebDAVDirectory(
-          project.webdavUrl!,
-          project.webdavUsername!,
-          project.webdavPassword!,
-          remoteDir
-        );
+        await createWebDAVDirectory(webdavUrl, webdavUsername, webdavPassword, remoteDir);
       } catch (error) {
         console.warn(`Failed to create WebDAV directory, continuing anyway: ${error}`);
       }
@@ -604,13 +204,7 @@ export function setupIpcHandlers(): void {
       // 上传文件到远程目录
       const remotePath = `${remoteDir}${backupName}`;
       try {
-        await uploadToWebDAV(
-          zipPath,
-          project.webdavUrl!,
-          project.webdavUsername!,
-          project.webdavPassword!,
-          remotePath
-        );
+        await uploadToWebDAV(zipPath, webdavUrl, webdavUsername, webdavPassword, remotePath);
         project.lastSync = new Date();
       } catch (error) {
         throw new Error(`WebDAV upload failed: ${error}`);
@@ -671,7 +265,22 @@ export function setupIpcHandlers(): void {
 
     // Download from WebDAV if it's a cloud backup
     if (backup.type === 'cloud') {
-      if (!project || !project.webdavUrl || !project.webdavUsername || !project.webdavPassword) {
+      // 获取 WebDAV 凭据（优先使用 webdavSourceId）
+      let webdavUrl = project.webdavUrl;
+      let webdavUsername = project.webdavUsername;
+      let webdavPassword = project.webdavPassword;
+
+      if (project.webdavSourceId) {
+        const settings = await loadSettings();
+        const webdavSource = settings.webdavSources.find(s => s.id === project.webdavSourceId);
+        if (webdavSource) {
+          webdavUrl = webdavSource.url;
+          webdavUsername = webdavSource.username;
+          webdavPassword = webdavSource.password;
+        }
+      }
+
+      if (!webdavUrl || !webdavUsername || !webdavPassword) {
         throw new Error('WebDAV credentials not configured');
       }
 
@@ -685,13 +294,7 @@ export function setupIpcHandlers(): void {
         remoteDir = `${remoteDir}/`;
       }
       const remotePath = `${remoteDir}${backup.name}`;
-      await downloadFromWebDAV(
-        project.webdavUrl!,
-        project.webdavUsername!,
-        project.webdavPassword!,
-        remotePath,
-        tempZip
-      );
+      await downloadFromWebDAV(webdavUrl, webdavUsername, webdavPassword, remotePath, tempZip);
       zipPath = tempZip;
     }
 
@@ -766,35 +369,52 @@ export function setupIpcHandlers(): void {
     if (backup.type === 'cloud') {
       const projects = await loadProjects();
       const project = projects.find((p) => p.id === backup.projectId);
-      if (project?.webdavUrl && project?.webdavUsername && project?.webdavPassword) {
-        // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
-        let remoteDir = project.webdavRemotePath || project.id;
-        if (!remoteDir.startsWith('/')) {
-          remoteDir = `/${remoteDir}`;
-        }
-        if (!remoteDir.endsWith('/')) {
-          remoteDir = `${remoteDir}/`;
-        }
-        const remotePath = `${remoteDir}${backup.name}`;
-        const fullUrl = project.webdavUrl.endsWith('/')
-          ? `${project.webdavUrl}${remotePath}`
-          : `${project.webdavUrl}/${remotePath}`;
-        const parsedUrl = new URL(fullUrl);
-        const isHttps = parsedUrl.protocol === 'https:';
-        const httpModule = isHttps ? https : http;
-        const auth = Buffer.from(`${project.webdavUsername}:${project.webdavPassword}`).toString('base64');
+      if (project) {
+        // 获取 WebDAV 凭据（优先使用 webdavSourceId）
+        let webdavUrl = project.webdavUrl;
+        let webdavUsername = project.webdavUsername;
+        let webdavPassword = project.webdavPassword;
 
-        const options = {
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port || (isHttps ? 443 : 80),
-          path: parsedUrl.pathname + parsedUrl.search,
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Basic ${auth}`,
-          },
-        };
+        if (project.webdavSourceId) {
+          const settings = await loadSettings();
+          const webdavSource = settings.webdavSources.find(s => s.id === project.webdavSourceId);
+          if (webdavSource) {
+            webdavUrl = webdavSource.url;
+            webdavUsername = webdavSource.username;
+            webdavPassword = webdavSource.password;
+          }
+        }
 
-        httpModule.request(options).end();
+        if (webdavUrl && webdavUsername && webdavPassword) {
+          // 构建远程路径：如果指定了远程路径，使用它；否则使用项目ID作为目录
+          let remoteDir = project.webdavRemotePath || project.id;
+          if (!remoteDir.startsWith('/')) {
+            remoteDir = `/${remoteDir}`;
+          }
+          if (!remoteDir.endsWith('/')) {
+            remoteDir = `${remoteDir}/`;
+          }
+          const remotePath = `${remoteDir}${backup.name}`;
+          const fullUrl = webdavUrl.endsWith('/')
+            ? `${webdavUrl}${remotePath}`
+            : `${webdavUrl}/${remotePath}`;
+          const parsedUrl = new URL(fullUrl);
+          const isHttps = parsedUrl.protocol === 'https:';
+          const httpModule = isHttps ? https : http;
+          const auth = Buffer.from(`${webdavUsername}:${webdavPassword}`).toString('base64');
+
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (isHttps ? 443 : 80),
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Basic ${auth}`,
+            },
+          };
+
+          (httpModule as typeof http).request(options).end();
+        }
       }
     }
 
@@ -810,6 +430,7 @@ export function setupIpcHandlers(): void {
     await saveBackups(filtered);
   });
 
+  // Settings handlers
   ipcMain.handle('get-settings', async (): Promise<any> => {
     const settings = await loadSettings();
     return {
@@ -840,6 +461,7 @@ export function setupIpcHandlers(): void {
     };
   });
 
+  // File dialog handler
   ipcMain.handle('show-open-dialog', async (_event, options: any) => {
     if (!mainWindow) {
       return { canceled: true, filePaths: [] };
@@ -849,5 +471,19 @@ export function setupIpcHandlers(): void {
       title: options.title || '选择文件或目录',
     });
     return result;
+  });
+
+  // WebDAV handlers
+  ipcMain.handle('test-webdav-connection', async (_event, url: string, username: string, password: string): Promise<{ success: boolean; message: string }> => {
+    return await testWebDAVConnection(url, username, password);
+  });
+
+  ipcMain.handle('list-webdav-directory', async (_event, url: string, username: string, password: string, remotePath?: string): Promise<any[]> => {
+    const items = await listWebDAVDirectory(url, username, password, remotePath);
+    return items.map(item => ({
+      path: item.path,
+      name: item.name,
+      is_directory: item.isDirectory,
+    }));
   });
 }
