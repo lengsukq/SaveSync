@@ -101,6 +101,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整 git 历史以生成提交记录
 
       - name: Get version
         id: version
@@ -108,9 +110,21 @@ jobs:
           if [ -n "${{ github.event.inputs.version }}" ]; then
             echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           else
-            DATE=$(date +%Y%m%d)
-            echo "version=v1.${DATE}" >> $GITHUB_OUTPUT
+            DATETIME=$(date +%Y%m%d%H%M)
+            echo "version=v1.${DATETIME}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Get commit log
+        id: commits
+        run: |
+          # 获取最近 20 条提交记录
+          COMMITS=$(git log --pretty=format:"- %s (%h)" -20)
+          # 使用 EOF 来保留多行内容
+          {
+            echo 'commits<<EOF'
+            echo "$COMMITS"
+            echo EOF
+          } >> $GITHUB_OUTPUT
 
       - name: Download Windows artifacts
         if: github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'both'
@@ -140,8 +154,11 @@ jobs:
             - **Windows**: 下载 `.exe` 安装包
             - **macOS**: 下载 `.dmg` 安装包
 
-            ### 变更
-            - 查看 [提交历史](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})
+            ### 提交记录
+            ${{ steps.commits.outputs.commits }}
+
+            ### 查看详情
+            - [完整提交历史](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})
 
             ---
             *自动构建于 ${{ github.event.head_commit.timestamp || github.run_started_at }}*
